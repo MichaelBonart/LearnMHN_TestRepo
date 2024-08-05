@@ -39,15 +39,18 @@ def sym_sparse(omega_theta: np.ndarray, eps: float = 1e-05) -> float:
         np.sqrt(
             theta_without_omega.T ** 2 + theta_without_omega ** 2 - theta_without_omega.T * theta_without_omega + eps)
     )
-    # remove all eps that were added to the diagonal (which should be zero) in the equation above
+    # remove all eps that were added to the diagonal (which should be zero) in
+    # the equation above
     theta_sum -= n * np.sqrt(eps)
-    # due to the symmetry of the formula, we get twice the value of what we want, so halve it
+    # due to the symmetry of the formula, we get twice the value of what we
+    # want, so halve it
     theta_sum *= 0.5
     omega_sum = np.sum(np.sqrt(theta_copy[-1] ** 2 + eps))
     return theta_sum + omega_sum
 
 
-def sym_sparse_deriv(omega_theta: np.ndarray, eps: float = 1e-05) -> np.ndarray:
+def sym_sparse_deriv(omega_theta: np.ndarray,
+                     eps: float = 1e-05) -> np.ndarray:
     """
     Derivative of the sym_sparse penalty.
     """
@@ -55,7 +58,8 @@ def sym_sparse_deriv(omega_theta: np.ndarray, eps: float = 1e-05) -> np.ndarray:
     np.fill_diagonal(theta_copy, 0)
     theta_without_omega = theta_copy[:-1]
     theta_sum_denominator = 2 * np.sqrt(
-        theta_without_omega.T ** 2 + theta_without_omega ** 2 - theta_without_omega.T * theta_without_omega + eps
+        theta_without_omega.T ** 2 + theta_without_omega ** 2 -
+        theta_without_omega.T * theta_without_omega + eps
     )
     theta_sum_numerator = 2 * theta_without_omega - theta_without_omega.T
     theta_derivative = theta_sum_numerator / theta_sum_denominator
@@ -63,7 +67,72 @@ def sym_sparse_deriv(omega_theta: np.ndarray, eps: float = 1e-05) -> np.ndarray:
     return np.vstack((theta_derivative, omega_derivative))
 
 
-def build_regularized_score_func(gradient_and_score_function: Callable, penalty_function: Callable = l1):
+def get_hybrid_l1_sym_sparse(non_sym: list) -> Callable:
+
+    def hybrid_l1_sym_sparse(omega_theta: np.ndarray,
+                             eps: float = 1e-05) -> float:
+
+        sym_events = [i for i in range(
+            omega_theta.shape[1]) if i not in non_sym]
+
+        theta_l1 = omega_theta.copy()
+        np.fill_diagonal(theta_l1, 0)
+        theta_l1[np.ix_(sym_events, sym_events)] = 0
+
+        theta_sym = omega_theta[sym_events, :][:, sym_events].copy()
+        np.fill_diagonal(theta_sym, 0)
+
+        sym_sum = np.sum(
+            np.sqrt(
+                theta_sym.T ** 2 + theta_sym ** 2 - theta_sym.T * theta_sym + eps)
+        )
+        # remove all eps that were added to the diagonal (which should be zero)
+        # in the equation above
+        sym_sum -= omega_theta.shape[1] * np.sqrt(eps)
+        # due to the symmetry of the formula, we get twice the value of what we
+        # want, so halve it
+        sym_sum *= 0.5
+
+        l1_sum = np.sum(np.sqrt(theta_l1 ** 2 + eps))
+
+        return sym_sum + l1_sum
+
+    return hybrid_l1_sym_sparse
+
+
+def get_hybrid_l1_sym_sparse_deriv(non_sym: list) -> Callable:
+
+    def hybrid_l1_sym_sparse_deriv(
+            omega_theta: np.ndarray, eps: float = 1e-05) -> np.ndarray:
+
+        sym_events = [i for i in range(
+            omega_theta.shape[1]) if i not in non_sym]
+
+        theta_l1 = omega_theta.copy()
+        np.fill_diagonal(theta_l1, 0)
+        theta_l1[np.ix_(sym_events, sym_events)] = 0
+
+        theta_sym = omega_theta[sym_events, :][:, sym_events].copy()
+        np.fill_diagonal(theta_sym, 0)
+
+        sym_deriv_numerator = 2 * theta_sym - theta_sym.T
+        sym_deriv_denominator = 2 * np.sqrt(
+            theta_sym.T ** 2 + theta_sym ** 2 -
+            theta_sym.T * theta_sym + eps
+        )
+        sym_derivative = sym_deriv_numerator / sym_deriv_denominator
+
+        l1_derivative = theta_l1 / np.sqrt(theta_l1 ** 2 + eps)
+
+        l1_derivative[np.ix_(sym_events, sym_events)] = sym_derivative
+
+        return l1_derivative
+
+    return hybrid_l1_sym_sparse_deriv
+
+
+def build_regularized_score_func(
+        gradient_and_score_function: Callable, penalty_function: Callable = l1):
     """
     This function gets a function which can compute a gradient and a score at the same time and returns a function
     which computes the score and adds a regularization function.
@@ -90,7 +159,8 @@ def build_regularized_score_func(gradient_and_score_function: Callable, penalty_
     return reg_score_func
 
 
-def build_regularized_gradient_func(gradient_and_score_function: Callable, penalty_derivative: Callable = l1_):
+def build_regularized_gradient_func(
+        gradient_and_score_function: Callable, penalty_derivative: Callable = l1_):
     """
     This function gets a function which can compute a gradient and a score at the same time and returns a function
     which computes the gradient and adds the gradient of the regularization function.
