@@ -651,7 +651,9 @@ class oMHNOptimizer(cMHNOptimizer):
         You have three options:
             Penalty.L1:          (default) uses the L1 penalty as regularization
             Penalty.SYM_SPARSE:  uses a penalty which induces sparsity and soft symmetry
-            Penalty.HYBRID:      uses a combination of the L1 penalty and the sym_sparse penalty
+            Penalty.HYBRID:      uses a combination of the L1 penalty and the
+            sym_sparse penalty. If given, you also need to specify non_sym, i.e., the 
+            indices of the events that should not be symmetrically regularized.
 
         The Penalty enum is part of this optimizer class.
         """
