@@ -431,10 +431,11 @@ def compute_restricted_inverse(double[:, :] theta, int[:] state, double[:] b, bi
 
 @cython.wraparound(False)
 @cython.boundscheck(False)
-cdef double restricted_gradient_and_score(double[:, :] theta, State *state, double[:, :] g):
+cdef double restricted_gradient_and_score(double[:] p0, double[:, :] theta, State *state, double[:, :] g):
     """
-    Computes a part of the gradient and score corresponding to a given state
+    Computes \delQ\del\theta_ij p_0
 
+    :param p0: vector
     :param theta: matrix containing the theta entries
     :param state: state representing current tumor sample
     :param g: the resulting gradient is stored in this matrix
@@ -449,24 +450,22 @@ cdef double restricted_gradient_and_score(double[:, :] theta, State *state, doub
     cdef int incx0 = 0
     cdef double one = 1.
     cdef double mOne = -1.
-    cdef np.ndarray[np.double_t] p0 = np.zeros(nx, dtype=np.double)
-    p0[0] = 1
 
     # compute dg, the diagonal of [I-Q]
     cdef double *dg = <double *> malloc(nx * sizeof(double))
-    restricted_q_diag(theta, state, dg)         # compute the diagonal of Q
+    restricted_q_diag(theta, state, dg)         # dg <- diagonal of Q
     daxpy(&nx, &one, &mOne, &incx0, dg, &incx)  # subtract 1 from each entry to get the diagonal of [Q-I]
     dscal(&nx, &mOne, dg, &incx)                # scale with -1 to get the diagonal of [I-Q]
 
     # compute parts of the probability distribution yielded by the current cMHN
     cdef np.ndarray[np.double_t] pth = np.empty(nx, dtype=np.double)
-    _compute_restricted_inverse(theta, dg, state, p0, pth)
+    _compute_restricted_inverse(theta, dg, state, p0, pth) # pth <- [I-Q]^(-1) p0 
 
     cdef np.ndarray[np.double_t] pD = np.zeros(nx)
-    pD[nx-1] = 1 / pth[nx-1]
+    pD[nx-1] = 1 / pth[nx-1] # pD_d/pth__d
 
     cdef np.ndarray[np.double_t] q = np.empty(nx, dtype=np.double)
-    _compute_restricted_inverse(theta, dg, state, pD, q, True)
+    _compute_restricted_inverse(theta, dg, state, pD, q, True) # q <- [I-Q]^(-T) pD
 
     cdef int i, j
 
