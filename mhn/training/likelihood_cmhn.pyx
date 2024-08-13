@@ -77,11 +77,13 @@ IF NVCC_AVAILABLE:
         #define DLL_PREFIX 
         #endif
 
+        int DLL_PREFIX cuda_gradient_and_score_data_point(double *ptheta, int n, State *data_point, double *p0, double *grad_out, double *score_out);
         int DLL_PREFIX cuda_gradient_and_score_implementation(double *ptheta, int n, State *mutation_data, int data_size, double *grad_out, double *score_out);
         void DLL_PREFIX get_error_name_and_description(int error, const char **error_name, const char **error_description);
         int DLL_PREFIX cuda_functional();
         """
 
+        int cuda_gradient_and_score_data_point(double *ptheta, int n, State *data_point, double *p0, double *grad_out, double *score_out)
         int cuda_gradient_and_score_implementation(double *ptheta, int n, State *mutation_data, int data_size, double *grad_out, double *score_out)
         void get_error_name_and_description(int error, const char **error_name, const char **error_description)
         int cuda_functional()
@@ -433,7 +435,7 @@ def compute_restricted_inverse(double[:, :] theta, int[:] state, double[:] b, bi
 @cython.boundscheck(False)
 cdef double restricted_gradient_and_score(double[:] p0, double[:, :] theta, State *state, double[:, :] g):
     """
-    Computes \delQ\del\theta_ij p_0
+    Computes a part of the gradient and score corresponding to a given state
 
     :param p0: vector
     :param theta: matrix containing the theta entries
@@ -484,7 +486,7 @@ cdef double restricted_gradient_and_score(double[:] p0, double[:, :] theta, Stat
 
     # compute the gradient efficiently using the shuffle trick
     for i in range(n):
-        restricted_kronvec(theta, i, pth, state, mutation_num, ptmp, diag=True)
+        restricted_kronvec(theta, i, pth, state, mutation_num, ptmp, diag=True) # ptmp <- Q^i pth
         for j in range(nx):
             r_vec[j] = q[j] * ptmp[j] 
         old_vec = &r_vec[0]
@@ -545,11 +547,17 @@ cpdef cpu_gradient_and_score(double[:, :] theta, StateContainer mutation_data):
     cdef int n_square = n*n
 
     cdef double score = 0
+    cdef np.ndarray[np.double_t] p0
+    cdef int nx
 
     for i in range(data_size):
         # for each sample/patient in mutation_data,
         # compute the gradient and score for the sample and add them to the total gradient and total score
-        score += restricted_gradient_and_score(theta, &mutation_data.states[i], local_gradient_container)
+        nx = 1 << get_mutation_num(&mutation_data.states[i])
+        p0 = np.zeros(nx, dtype=np.double)
+        p0[nx - 1] = 1
+
+        score += restricted_gradient_and_score(p0, theta, &mutation_data.states[i], local_gradient_container)
         final_gradient += local_gradient_container
 
     # return the normalized gradient and normalized score
@@ -571,7 +579,7 @@ cpdef cython_gradient_and_score(double[:, :] theta, StateContainer mutation_data
 
 @cython.wraparound(False)
 @cython.boundscheck(False)
-cdef double restricted_score(double[:, :] theta, State *state):
+cdef double restricted_score(double[:] p0, double[:, :] theta, State *state):
     """
     Computes a part of the log-likelihood score corresponding to a given state.
 
@@ -585,8 +593,6 @@ cdef double restricted_score(double[:, :] theta, State *state):
     cdef int incx0 = 0
     cdef double one = 1.
     cdef double mOne = -1.
-    cdef np.ndarray[np.double_t] p0 = np.zeros(nx, dtype=np.double)
-    p0[0] = 1
 
     # compute dg, the diagonal of [I-Q]
     cdef double *dg = <double *> malloc(nx * sizeof(double))
@@ -613,11 +619,17 @@ cpdef cpu_score(double[:, :] theta, StateContainer mutation_data):
     cdef int i
     cdef int data_size = mutation_data.data_size
     cdef double score = 0
+    cdef np.ndarray[np.double_t] p0
+    cdef int mutation_num
 
     for i in range(data_size):
         # for each sample/patient in mutation_data,
         # compute the score for the sample and add it to the total score
-        score += restricted_score(theta, &mutation_data.states[i])
+        nx = 1 << get_mutation_num(&mutation_data.states[i])
+        p0 = np.zeros(nx, dtype=np.double)
+        p0[nx - 1] = 1
+
+        score += restricted_score(p0, theta, &mutation_data.states[i])
 
     # return the normalized score
     return score / data_size
@@ -733,10 +745,14 @@ cpdef gradient_and_score(double[:, :] theta, StateContainer mutation_data):
             free(grad_out)
 
         cdef np.ndarray[np.double_t, ndim=2]  tmp_gradient = np.zeros((n, n), dtype=np.double)
+        cdef np.ndarray[np.double_t] p0
+
 
         for i in range(index_left):
             state = &sorted_data[i]
-            score += restricted_gradient_and_score(theta, state, tmp_gradient)
+            p0 = np.zeros(1 << get_mutation_num(state), dtype=np.double)
+            p0[1 << get_mutation_num(state) - 1] = 1
+            score += restricted_gradient_and_score(p0, theta, state, tmp_gradient)
             final_gradient += tmp_gradient
 
         free(sorted_data)

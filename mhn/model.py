@@ -134,21 +134,22 @@ class cMHN:
 
         return trajectory_list, observation_times
 
-    def compute_marginal_likelihood(self, state: np.ndarray) -> float:
+    def compute_marginal_likelihood(self, state: np.ndarray, p0: np.ndarray = None) -> float:
         """
         Computes the likelihood of observing a given state, where we consider the observation time to be an
         exponential random variable with mean 1.
 
         :param state: a 1d numpy array (dtype=np.int32) containing 0s and 1s, where each entry represents an event being present (1) or not (0)
-
+        :param p0: (optional) initial probability vector, defaults to [1, 0, 0, ...]    
         :returns: the likelihood of observing the given state according to this cMHN
         """
         if not set(state.flatten()).issubset({0, 1}):
             raise ValueError("The state array must only contain 0s and 1s")
         mutation_num = np.sum(state)
         nx = 1 << mutation_num
-        p0 = np.zeros(nx)
-        p0[0] = 1
+        if p0 is None:
+            p0 = np.zeros(nx)
+            p0[0] = 1
         p_th = likelihood_cmhn.compute_restricted_inverse(
             self.log_theta, state, p0, False)
         return p_th[-1]
@@ -583,16 +584,17 @@ class oMHN(cMHN):
         return self.get_equivalent_classical_mhn(
         ).sample_artificial_data(sample_num, as_dataframe)
 
-    def compute_marginal_likelihood(self, state: np.ndarray) -> float:
+    def compute_marginal_likelihood(self, state: np.ndarray, p0: np.ndarray = None) -> float:
         """
         Computes the likelihood of observing a given state, where we consider the observation time to be an
         exponential random variable with mean 1.
 
         :param state: a 1d numpy array (dtype=np.int32) containing 0s and 1s, where each entry represents an event being present (1) or not (0)
-
+        :param p0: (optional) initial probability vector, defaults to [1, 0, 0, ...]
+        
         :returns: the likelihood of observing the given state according to this oMHN
         """
-        return self.get_equivalent_classical_mhn().compute_marginal_likelihood(state)
+        return self.get_equivalent_classical_mhn().compute_marginal_likelihood(state, p0)
 
     def get_equivalent_classical_mhn(self) -> cMHN:
         """
