@@ -1,3 +1,27 @@
+# General Rules for Working on the Package
+
+The package is regularly updated with new features. Ideally, the following rules should be applied:
+
+- **Backwards Compatibility**: Backwards compatibility should always be ensured. This means that results generated with older package versions must also be reproducible with the current version. Changes to the package should never break older reproduction scripts. This implies:
+  - Functions, classes, and constants should not be renamed whenever possible.
+  - Existing methods/classes that are extended with new functionalities must still work with their old invocation parameters and produce the same results. New parameters must be added as keyword arguments with default values, and the return value of a method must contain exactly the same objects for old inputs.
+
+- **Testing**: Whenever possible, each function should have a corresponding test function located in the `test/` folder. These tests are especially important to protect against issues caused by future changes to the package. For simpler functions, such as plotting functions, it may suffice to execute the function in a test to ensure it runs without errors.
+
+- **Documentation and Type Hints**: Each function must include:
+  - A docstring with a brief description of the function, all input parameters, and the return value.
+  - Type hints for all input and output parameters.
+
+- **New Modules**: When creating a new module:
+  - Add a brief docstring at the beginning that explains the module’s contents in broad terms.
+  - Include a comment listing all authors of the module in the format: `#author(s): Max Mustermann`.
+
+- **Documentation Updates**: Ensure that any new functionality is included in the package documentation.
+
+- **PEP8 Compliance**: Code should adhere to PEP8 standards. The only exception is line length, which may exceed the default limit (up to approximately 160 characters).
+
+---
+
 # Versioning
 
 To publish a new version of the `mhn` package, the version in `setup.py` should always be updated first. To do so, simply adjust the `VERSION` variable.
@@ -79,4 +103,6 @@ password = <Insert API Token here>
 More details can be found in the [Twine documentation](https://twine.readthedocs.io/en/stable/) and the [PyPI documentation on `.pypirc`](https://packaging.python.org/en/latest/specifications/pypirc/).
 
 Additionally, the GitHub repository at https://github.com/StefanDevAccount/LearnMHN automates this process via a GitHub workflow. Administrators only need to create a new release to trigger the upload.
+
+**Never** upload a version without running all the tests located in the `test/` folder!
 
