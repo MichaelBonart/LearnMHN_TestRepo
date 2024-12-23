@@ -3,10 +3,10 @@
 The package is regularly updated with new features. Ideally, the following rules should be applied:
 
 - **Backwards Compatibility**: Backwards compatibility should always be ensured. This means that results generated with older package versions must also be reproducible with the current version. Changes to the package should never break older reproduction scripts. This implies:
-  - Functions, classes, and constants should not be renamed whenever possible.
+  - Functions, classes, modules and constants should not be renamed whenever possible.
   - Existing methods/classes that are extended with new functionalities must still work with their old invocation parameters and produce the same results. New parameters must be added as keyword arguments with default values, and the return value of a method must contain exactly the same objects for old inputs.
 
-- **Testing**: Whenever possible, each function should have a corresponding test function located in the `test/` folder. These tests are especially important to protect against issues caused by future changes to the package. For simpler functions, such as plotting functions, it may suffice to execute the function in a test to ensure it runs without errors.
+- **Testing**: Whenever possible, each function should have a corresponding test function located in the `test/` folder. These tests are especially important to protect against issues caused by future changes to the package. For simpler functions, such as plotting functions, it may suffice to simply execute the function in a test to ensure it runs without errors.
 
 - **Documentation and Type Hints**: Each function must include:
   - A docstring with a brief description of the function, all input parameters, and the return value.
@@ -34,7 +34,7 @@ For a version X.Y.Z, the following rules apply:
 
 (All numbers to the right of the incremented number are reset to 0.) 
 
-`setup.py` uses the `VERSION` variable to communicate the current package version to `setuptools`. Additionally, the version must be accessible within the package itself, allowing the user to query the package version via `mhn.__version__`. To achieve this, `setup.py` creates a `METADATA` file within the package, which can be read at runtime.
+`setup.py` uses the `VERSION` variable to communicate the current package version to `setuptools`. Additionally, the version must be accessible within the package itself, allowing the user to query the package version via `mhn.__version__`. To achieve this, `setup.py` creates a `METADATA` file within the package, which the package can access at runtime.
 
 ---
 
