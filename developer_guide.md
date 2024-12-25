@@ -2,7 +2,7 @@
 
 The package is regularly updated with new features. Ideally, the following rules should be applied:
 
-- **Backwards Compatibility**: Backwards compatibility should always be ensured. This means that results generated with older package versions must also be reproducible with the current version. Changes to the package should never break older reproduction scripts. This implies:
+- **Backwards Compatibility**: Backwards compatibility should always be ensured. This means that results generated with older package versions must also be reproducible with the current version. Changes to the package should not break older reproduction scripts. This implies:
   - Functions, classes, modules and constants should not be renamed whenever possible.
   - Existing methods/classes that are extended with new functionalities must still work with their old invocation parameters and produce the same results. New parameters must be added as keyword arguments with default values, and the return value of a method must contain exactly the same objects for old inputs.
 
@@ -14,9 +14,9 @@ The package is regularly updated with new features. Ideally, the following rules
 
 - **New Modules**: When creating a new module:
   - Add a brief docstring at the beginning that explains the module’s contents in broad terms.
-  - Include a comment listing all authors of the module in the format: `#author(s): Max Mustermann`.
+  - Include a comment listing all authors of the module in the format: `# author(s): Max Mustermann`.
 
-- **Documentation Updates**: Ensure that any new functionality is included in the package documentation.
+- **Documentation Updates**: Ensure that any new functionality is included in the package documentation (see `doc/` folder).
 
 - **PEP8 Compliance**: Code should adhere to PEP8 standards. The only exception is line length, which may exceed the default limit (up to approximately 160 characters).
 
@@ -24,13 +24,13 @@ The package is regularly updated with new features. Ideally, the following rules
 
 # Versioning
 
-To publish a new version of the `mhn` package, the version in `setup.py` should always be updated first. To do so, simply adjust the `VERSION` variable.
+When working on a new version of the `mhn` package, the version in `setup.py` should always be updated first. To do so, simply adjust the `VERSION` variable.
 
 For a version X.Y.Z, the following rules apply:
 
 1. If there are only minimal changes, such as a bug fix, increment Z.
 2. If new functionalities are added, increment Y.
-3. If changes are made that render the package no longer backwards compatible, increment X.
+3. If major changes are made that render the package no longer backwards compatible, increment X.
 
 (All numbers to the right of the incremented number are reset to 0.) 
 
@@ -43,7 +43,7 @@ For a version X.Y.Z, the following rules apply:
 Like most Python packages, the `mhn` package requires other Python packages to function correctly. Two cases must be distinguished:
 
 1. **Installation Dependencies**: These are required for the package installation process, particularly for compiling the Cython components (e.g., `setuptools`, `Cython`, and `numpy`).
-2. **Runtime Dependencies**: These are needed only at runtime, such as `pandas` and `matplotlib`.
+2. **Runtime Dependencies**: These are needed at runtime, such as `pandas` and `matplotlib`.
 
 ### Installation Dependencies
 
@@ -102,7 +102,8 @@ password = <Insert API Token here>
 
 More details can be found in the [Twine documentation](https://twine.readthedocs.io/en/stable/) and the [PyPI documentation on `.pypirc`](https://packaging.python.org/en/latest/specifications/pypirc/).
 
-Additionally, the GitHub repository at https://github.com/StefanDevAccount/LearnMHN automates this process via a GitHub workflow. Administrators only need to create a new release to trigger the upload.
+Additionally, the GitHub repository at https://github.com/StefanDevAccount/LearnMHN automates this process via a GitHub workflow. Administrators only need to create a new release to trigger the upload.  
+If you want to use this functionality in your own fork of this repository, you have to add `PYPI_API_TOKEN` with your PyPI API token as value to the secrets of your GitHub repository.
 
 **Never** upload a version without running all the tests located in the `test/` folder!
 
