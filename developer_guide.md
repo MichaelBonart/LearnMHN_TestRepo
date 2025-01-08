@@ -107,3 +107,56 @@ If you want to use this functionality in your own fork of this repository, you h
 
 **Never** upload a version without running all the tests located in the `test/` folder!
 
+---
+
+# setup.py
+
+The `setup.py` script serves two primary purposes:
+
+1. **Packaging for PyPI Upload:**  
+   It packages the project for upload to PyPI using the command `python setup.py sdist` (see PyPI Upload).
+
+2. **Installation Execution:**  
+   During the installation of the package on the user's system, this script performs several tasks:
+
+   - **System Analysis:**  
+     It examines the user's system to determine the operating system and checks whether the CUDA compiler (`nvcc`) is installed.
+
+   - **Package Definitions:**  
+     The script contains several definitions critical for the package:
+     - **Package Version:**  
+       The `VERSION` in `setup.py` is passed to `setuptools` and stored in the package's metadata, allowing users to retrieve it via `__version__`.
+     - **STATE_SIZE:**  
+       This parameter defines the size of the binary state arrays used by the package. These arrays store the binary states of events (present or not present) as 
+       `int32` arrays, where each event is represented by a single bit.  
+       The `STATE_SIZE` determines the maximum number of events the package can handle, calculated as `32 * STATE_SIZE`.  
+       By default, `STATE_SIZE` is set to `8`, allowing for a maximum of 256 events, which suffices for most use cases.  
+       If larger models are required, this constant can be adjusted in `setup.py`, and the package reinstalled. Note that this requires recompilation of the entire Cython and CUDA code.
+
+   - **CPU-Only Installation:**  
+     The script defines an environment variable that can be used to enforce a CPU-only installation.
+
+   - **Compilation:**  
+     The script manages the compilation of the package:
+     - **CUDA Compilation:**  
+       If the CUDA compiler (`nvcc`) is available on the user's system, it compiles the CUDA code.
+     - **Cython Compilation:**  
+       The script converts Cython code to C code, which is then compiled by a C compiler on the user's system.  
+       *Note:* A pre-installed C compiler is required for the package installation.
+
+   - **Metadata File Creation:**  
+     The script generates a `METADATA` file, which the package uses at runtime to access information such as the current package version.
+
+---
+
+# Other Top-Level Files
+
+- **`pyproject.toml`:**  
+  Contains only the requirements needed for the package installation itself (e.g., specific versions of Cython and NumPy).
+
+- **`MANIFEST.in`:**  
+  Specifies which non-Python files should be included in the final package. This includes files such as CUDA and Cython files, as well as the `METADATA` file.
+
+- **`.readthedocs.yaml`:**  
+  Provides instructions for automatically updating the documentation on [Read the Docs](https://readthedocs.org/) whenever new changes are pushed to the `main` branch.  
+  *Note:* Both Read the Docs and a public GitHub repository must be properly configured for this functionality to work.
