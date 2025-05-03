@@ -183,14 +183,8 @@ cdef void _compute_inverse(const double *theta, int n, const double *dg, const d
     cdef int bit_setter
     cdef int modified_i
 
-    cdef double theta_product
+    cdef double log_theta_sum
     cdef double xout_i
-
-    # we need the exponential form of theta, so we compute it here once
-    cdef double *exp_theta = <double *> malloc(n*n * sizeof(double))
-    for i in range(n):
-        for j in range(n):
-            exp_theta[i*n + j] = exp(theta[i*n + j])
 
     # we compute the values of xout using forward substitution
     # at the beginning we initialize xout with the values of b
@@ -215,15 +209,14 @@ cdef void _compute_inverse(const double *theta, int n, const double *dg, const d
             modified_i = (i | bit_setter)
             if modified_i != i:
                 # compute the product of all thetas which correspond to genes that are mutated in i
-                theta_product = 1.
+                log_theta_sum = 0.
                 i_copy = i
                 for k in range(n):
                     if i_copy & 1:
-                        theta_product *= exp_theta[j*n + k]
+                        log_theta_sum += theta[j*n + k]
                     i_copy >>= 1
-                xout[modified_i] += theta_product * exp_theta[j*n + j] * xout_i
+                xout[modified_i] += exp(log_theta_sum + theta[j*n + j]) * xout_i
             bit_setter <<= 1
-    free(exp_theta)
 
 
 @cython.cdivision(True)
@@ -246,14 +239,8 @@ cdef void _compute_inverse_t(const double *theta, int n, const double *dg, const
     cdef int bit_setter
     cdef int modified_i
 
-    cdef double theta_product
+    cdef double log_theta_sum
     cdef double xout_i
-
-    # we need the exponential form of theta, so we compute it here once
-    cdef double *exp_theta = <double *> malloc(n * n * sizeof(double))
-    for i in range(n):
-        for j in range(n):
-            exp_theta[i*n + j] = exp(theta[i*n + j])
 
     # initialize xout with the values of b
     dcopy(&nx, b, &incx, xout, &incx)
@@ -279,15 +266,14 @@ cdef void _compute_inverse_t(const double *theta, int n, const double *dg, const
             modified_i = (i & (~bit_setter))
             if modified_i != i:
                 # compute the product of all thetas which correspond to genes that are mutated in i
-                theta_product = 1.
+                log_theta_sum = 0.
                 i_copy = modified_i
                 for k in range(n):
                     if i_copy & 1:
-                        theta_product *= exp_theta[j*n + k]
+                        log_theta_sum += theta[j*n + k]
                     i_copy >>= 1
-                xout[modified_i] += theta_product * exp_theta[j*n + j] * xout_i
+                xout[modified_i] += exp(log_theta_sum + theta[j*n + j]) * xout_i
             bit_setter <<= 1
-    free(exp_theta)
 
 
 cpdef compute_inverse(double[:, :] theta, double[:] dg, double[:] b, double[:] xout, bint transp):
