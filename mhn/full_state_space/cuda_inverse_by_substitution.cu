@@ -120,14 +120,14 @@ __global__ void compute_inverse_level(const double * __restrict__ theta, const i
         for(int k = 0; k < n; k++){
             int modified_index = (index & (~bit_setter));
             if (modified_index != index){
-                double theta_product = 1.;
+                double log_theta_sum = 0.;
                 int ind_copy = index;
                 for(int r = 0; r < n; r++){
-                    theta_product *= 1 + (ind_copy & 1) * (local_theta[k*n + r] - 1);
+                    log_theta_sum += (ind_copy & 1) * local_theta[k*n + r];
                     ind_copy >>= 1;
                 }
                 // index was chosen in such a way that we can be sure that xout[modified_index] already contains the correct value
-                xout_element += theta_product * xout[modified_index];
+                xout_element += exp(log_theta_sum) * xout[modified_index];
             }
             bit_setter <<= 1;
         }
@@ -168,14 +168,14 @@ __global__ void compute_inverse_level_t(const double * __restrict__ theta, const
         for(int k = 0; k < n; k++){
             int modified_index = (index | bit_setter);
             if (modified_index != index){
-                double theta_product = 1.;
+                double log_theta_sum = 0.;
                 int ind_copy = modified_index;
                 for(int r = 0; r < n; r++){
-                    theta_product *= 1 + (ind_copy & 1) * (local_theta[k*n + r] - 1);
+                    log_theta_sum += (ind_copy & 1) * local_theta[k*n + r];
                     ind_copy >>= 1;
                 }
                 // index was chosen in such a way that we can be sure that xout[modified_index] already contains the correct value
-                xout_element += theta_product * xout[modified_index];
+                xout_element += exp(log_theta_sum) * xout[modified_index];
             }
             bit_setter <<= 1;
         }

@@ -132,7 +132,7 @@ __global__ void cuda_restricted_kronvec(const double* __restrict__ ptheta, const
             return;
 
         if (cuda_index == 0)
-            pout[0] -= ptheta[i * n + i] * px[0];
+            pout[0] -= exp(ptheta[i * n + i]) * px[0];
 
         return;
     }
@@ -185,6 +185,7 @@ __global__ void cuda_restricted_kronvec(const double* __restrict__ ptheta, const
         // if the ith gene is not mutated, count_before_i is set to mutation_num - 1, which leads to the two indices
         // only differing in the last bit (respectively the theta_i[j] for the spatially last mutated gene j). 
         // Hence we will just multiply the last theta to the (x_index + patch_size) entry at the end and get correct results
+        double log_theta_sum = 0.;
         double theta_product = 1.;
 
         int x_index_copy = x_index;
@@ -198,20 +199,21 @@ __global__ void cuda_restricted_kronvec(const double* __restrict__ ptheta, const
                 theta = theta_i[j];
                 if (i == j) {
                     // if i == j then that theta is always part of theta_product
-                    theta_product *= theta;
+                    log_theta_sum += theta;
                 }
                 else {
                     // if the current first bit of x_index_copy is set to 1, multiply with theta
                     // else multiply with one
                     // here the if condition is implicitly in the computation to avoid branching of the threads
-                    theta_product *= 1. + (x_index_copy & 1) * (theta - 1.);
+                    log_theta_sum += (x_index_copy & 1) * theta;
                 }
                 // shift the bits by one for the next iteration
                 x_index_copy >>= 1;
             }
             else if (i == j) {
                 // if the ith gene is not mutated, we simply multiply the entries with (-theta_ii)
-                theta_product *= -theta_i[i];
+                log_theta_sum += theta_i[i];
+                theta_product = -1.;
             }
 
             // if the mutation state of the next gene is stored on the current state_copy, make a bit shift to the right
@@ -228,6 +230,7 @@ __global__ void cuda_restricted_kronvec(const double* __restrict__ ptheta, const
         // this is the part for which it was important to choose the correct patch_size and why we needed to compute two entries at once
         // the following computations follow from the part of the shuffle algorithm where we multiply the 2x2 matrix containing theta_ii with px
         if (state_i_one) {
+            theta_product *= exp(log_theta_sum);
             if (!transp) {
                 double output = px[x_index] * theta_product;
                 pout[x_index + patch_size] += output;
@@ -248,9 +251,10 @@ __global__ void cuda_restricted_kronvec(const double* __restrict__ ptheta, const
         // if the ith gene is not mutated the two entries do not have to be computed together, this is why we could choose
         // count_before_i independently from the given state
         else {
-            pout[x_index] += theta_product * px[x_index];
+            pout[x_index] += theta_product * exp(log_theta_sum) * px[x_index];
             // multiply the last theta to this entry, as the thetas needed for both entries only differ in this last one
-            pout[x_index + patch_size] += theta_product * px[x_index + patch_size] * theta;
+
+            pout[x_index + patch_size] += theta_product * px[x_index + patch_size] * exp(log_theta_sum + theta);
         }
 
         
@@ -333,6 +337,7 @@ __global__ void cuda_subdiag(const double *ptheta, const State state, const int 
     for (int k = cuda_index; k < nx; k += stride) {
 
         double dg_entry = 1;
+        double log_theta_sum = 0.;
 
         uint32_t state_copy = state.parts[0];
         int position_condition = k;
@@ -341,16 +346,18 @@ __global__ void cuda_subdiag(const double *ptheta, const State state, const int 
             // depending on the index different thetas have to be multiplied to the subdiag entry
             if (state_copy & 1) {
                 if (i == j) {
-                    dg_entry *= -(1 - (position_condition & 1)) * theta;
+                    dg_entry *= -(1 - (position_condition & 1));
+                    log_theta_sum += theta;
                 }
                 else {
-                    dg_entry *= 1 + (position_condition & 1) * (theta - 1);
+                    log_theta_sum += (position_condition & 1) * theta;
                 }
 
                 position_condition >>= 1;
             }
             else if (i == j) {
-                dg_entry *= -theta;
+                dg_entry *= -1;
+                log_theta_sum += theta;
             }
 
             // if the mutation state of the next gene is stored on the current state_copy, make a bit shift to the right
@@ -362,6 +369,7 @@ __global__ void cuda_subdiag(const double *ptheta, const State state, const int 
                 state_copy = state.parts[(j + 1) >> 5];
             }
         }
+        dg_entry *= exp(log_theta_sum);
         //subtract the subdiagonal from the diagonal entries
         dg[k] -= dg_entry;
     }
@@ -791,7 +799,7 @@ extern "C"
         cudaMemset(cuda_score, 0, sizeof(double));
 
         // for the functions we need theta in its exponential form
-        array_exp<<<32, 64>>>(cuda_ptheta, n*n);
+        // array_exp<<<32, 64>>>(cuda_ptheta, n*n);
 
         // again check for errors
         // errors could occur if CUDA is not installed correctly or the kernel call did not work correctly
