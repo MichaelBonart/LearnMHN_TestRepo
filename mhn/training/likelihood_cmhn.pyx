@@ -255,10 +255,13 @@ cdef void restricted_q_diag(double[:, :] theta, State *state, double *dg):
 
     cdef double *s = <double *> malloc(nx * sizeof(double))
     cdef int current_length
-    cdef double exp_theta
     cdef double d_one = 1
     cdef double zero = 0
     cdef int i_one = 1
+
+    cdef int i_j_index = -1
+    cdef int i_j_counter
+    cdef int incr0 = 0
 
     # initialize the diagonal with zero
     dscal(&nx, &zero, dg, &i_one)
@@ -267,24 +270,28 @@ cdef void restricted_q_diag(double[:, :] theta, State *state, double *dg):
     for i in range(n):
         state_copy = state[0].parts[0]
         current_length = 1
-        s[0] = 1
+        s[0] = 0
+        i_j_counter = 0
+        i_j_index = -1
         # compute the ith subdiagonal of Q 
         for j in range(n):
             if state_copy & 1:
-                exp_theta = exp(theta[i, j])
                 if i == j:
-                    exp_theta *= -1
-                    dscal(&current_length, &exp_theta, s, &i_one)
-                    dscal(&current_length, &zero, s + current_length, &i_one)
+                    # dscal(&current_length, &exp_theta, s, &i_one)
+                    # dscal(&current_length, &zero, s + current_length, &i_one)
+                    daxpy(&current_length, &theta[i, j], &d_one, &incr0, s, &i_one)
+                    i_j_index = i_j_counter
                 else:
                     dcopy(&current_length, s, &i_one, s + current_length, &i_one)
-                    dscal(&current_length, &exp_theta, s + current_length, &i_one)
+                    # dscal(&current_length, &exp_theta, s + current_length, &i_one)
+                    daxpy(&current_length, &theta[i, j], &d_one, &incr0, s + current_length, &i_one)
 
                 current_length *= 2
+                i_j_counter += 1
 
             elif i == j:
-                exp_theta = - exp(theta[i, j])
-                dscal(&current_length, &exp_theta, s, &i_one)
+                # dscal(&current_length, &exp_theta, s, &i_one)
+                daxpy(&current_length, &theta[i, j], &d_one, &incr0, s, &i_one)
 
             # if the mutation state of the next gene is stored on the current state_copy, make a bit shift to the right
             # else state_copy becomes the next integer stored in the given state (x >> 5  <=> x // 32, x & 31 <=> x % 32)
@@ -292,6 +299,16 @@ cdef void restricted_q_diag(double[:, :] theta, State *state, double *dg):
                 state_copy >>= 1
             else:
                 state_copy = state[0].parts[(j+1) >> 5]
+
+        if i_j_index == -1:
+            for j in range(nx):
+                s[j] = -exp(s[j])
+        else:
+            for j in range(nx):
+                if (j >> i_j_index) & 1:
+                    s[j] = 0
+                else:
+                    s[j] = -exp(s[j])
 
         # add the subdiagonal to dg
         daxpy(&nx, &d_one, s, &i_one, dg, &i_one)
