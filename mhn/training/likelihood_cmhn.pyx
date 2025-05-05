@@ -113,9 +113,11 @@ cdef void restricted_kronvec(double[:, :] theta_mat, int i, double[:] x_vec, Sta
     cdef int nxhalf = nx / 2
     cdef double mOne = -1
     cdef double zero = 0
+    cdef double d_one = 1
 
     cdef int incx = 1
     cdef int incx2 = 2
+    cdef int incr0 = 0
     cdef int j
 
     # if we have no diagonal and the ith gene is not mutated, the result is always a zero vector
@@ -139,9 +141,15 @@ cdef void restricted_kronvec(double[:, :] theta_mat, int i, double[:] x_vec, Sta
         swap_vec = pout
         shuffled_vec = ptmp
 
-    old_vec = &x_vec[0]
+    # old_vec = &x_vec[0]
+    old_vec = swap_vec
+    dscal(&nx, &zero, old_vec, &incx)
 
     cdef int state_copy = state[0].parts[0]
+
+    cdef int i_j_index = -1
+    cdef int i_j_counter = 0
+    cdef double sign = 1.
 
     # use the shuffle algorithm to compute the product of the kronecker product with a vector
     for j in range(n):
@@ -149,46 +157,58 @@ cdef void restricted_kronvec(double[:, :] theta_mat, int i, double[:] x_vec, Sta
             dcopy(&nxhalf, old_vec, &incx2, shuffled_vec, &incx)
             dcopy(&nxhalf, old_vec+1, &incx2, shuffled_vec+nxhalf, &incx)
 
-            theta = exp(theta_i[j])
+            theta = theta_i[j]
             px1 = shuffled_vec
             px2 = shuffled_vec + nxhalf
 
             if j == i:
                 if not transp:
                     dcopy(&nxhalf, px1, &incx, px2, &incx)
-                    dscal(&nxhalf, &theta, px2, &incx)
+                    # dscal(&nxhalf, &theta, px2, &incx)
+                    daxpy(&nxhalf, &theta, &d_one, &incr0, px2, &incx)
+                    i_j_index = i_j_counter
                     if diag:
                         dcopy(&nxhalf, px2, &incx, px1, &incx)
-                        dscal(&nxhalf, &mOne, px1, &incx)
-                    else:
-                        dscal(&nxhalf, &zero, px1, &incx)
+                        # dscal(&nxhalf, &mOne, px1, &incx)
+
+                    # else:
+                    #     dscal(&nxhalf, &zero, px1, &incx)
                 else:
-                    if diag:
-                        theta *= -1
-                        daxpy(&nxhalf, &mOne, px2, &incx, px1, &incx)
-                        dscal(&nxhalf, &theta, px1, &incx)
-                        dscal(&nxhalf, &zero, px2, &incx)
-                    else:
-                        dcopy(&nxhalf,px2,&incx,px1,&incx)
-                        dscal(&nxhalf,&theta,px1,&incx)
-                        dscal(&nxhalf,&zero,px2,&incx)
+                    raise NotImplementedError("this case is not implemented for the numerical stable version")
+                    # if diag:
+                    #
+                    #     # theta *= -1
+                    #     # daxpy(&nxhalf, &mOne, px2, &incx, px1, &incx)
+                    #     # dscal(&nxhalf, &theta, px1, &incx)
+                    #     # dscal(&nxhalf, &zero, px2, &incx)
+                    # else:
+                    #     dcopy(&nxhalf,px2,&incx,px1,&incx)
+                    #     # dscal(&nxhalf,&theta,px1,&incx)
+                    #     daxpy(&nxhalf, &theta, &d_one, &incr0, px1, &incx)
+                    #     dscal(&nxhalf,&zero,px2,&incx)
 
             else:
-                dscal(&nxhalf, &theta, px2, &incx)
+                # dscal(&nxhalf, &theta, px2, &incx)
+                daxpy(&nxhalf, &theta, &d_one, &incr0, px2, &incx)
  
             old_vec = shuffled_vec
             shuffled_vec = swap_vec
             swap_vec = old_vec
 
+            i_j_counter += 1
+
         elif i == j:
-            theta = -exp(theta_i[j])
+            # theta = -exp(theta_i[j])
+            theta = theta_i[j]
+            sign = -1.
 
             # if old_vec is still pointing to x_vec, we have to change it to not alter x_vec
             if old_vec == &x_vec[0]:
                 dcopy(&nx, old_vec, &incx, swap_vec, &incx)
                 old_vec = swap_vec
 
-            dscal(&nx, &theta, old_vec, &incx)
+            # dscal(&nx, &theta, old_vec, &incx)
+            daxpy(&nx, &theta, &d_one, &incr0, old_vec, &incx)
 
 		# if the mutation state of the next gene is stored on the current state_copy, make a bit shift to the right
 		# else state_copy becomes the next integer stored in the given state (x >> 5  <=> x // 32, x & 31 <=> x % 32)
@@ -196,6 +216,18 @@ cdef void restricted_kronvec(double[:, :] theta_mat, int i, double[:] x_vec, Sta
             state_copy >>= 1
         else:
             state_copy = state[0].parts[(j+1) >> 5]
+
+
+    for j in range(nx):
+        if i_j_index == -1:
+            pout[j] = sign * exp(pout[j]) * x_vec[j]
+        elif not ((j >> i_j_index) & 1):
+            if diag:
+                pout[j] = - exp(pout[j]) * x_vec[j]
+            else:
+                pout[j] = 0
+        else:
+            pout[j] = sign * exp(pout[j]) * x_vec[j - (1 << i_j_index)]
 
     free(ptmp)
 
