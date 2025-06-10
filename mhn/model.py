@@ -103,7 +103,7 @@ class cMHN:
         initial_state: np.ndarray | list[str],
         output_event_names: bool = False,
         timed: float | Literal[False] = False
-    ) -> tuple[list[list[int | str]], np.ndarray]:
+    ) -> tuple[list[list[int | str]], np.ndarray] | list[list[int | str]]:
         """
         Simulates event accumulation using the Gillespie algorithm. Use np.random.seed() to make results reproducible.
 
@@ -112,11 +112,11 @@ class cMHN:
             initial_state (np.ndarray | list[str]): Starting state for the trajectories. Can be either a numpy array containing 0s and 1s, where each entry
                                                     represents an event being present (1) or not (0), or a list of strings, where each string is the name of
                                                     an event. The later can only be used if events were specified during creation of the cMHN object.
-            timed (float, optional): If a float is given, only sample trajetories until this (abstract) timepoint (without units). Defaults to False.
+            timed (float, optional): If a float is given, only sample trajetories until this (abstract) timepoint (without units). In this case, only the trajectories are returned. Defaults to False.
             output_event_names (bool, optional): Whether to return event names instead of indices. Defaults to False.
 
         Returns:
-            tuple[list[list[int | str]], np.ndarray]: List of trajectories and their observation times.
+            tuple[list[list[int | str]], np.ndarray]: List of trajectories and, if applicable their observation times.
         """
         if type(initial_state) is np.ndarray:
             initial_state = initial_state.astype(np.int32)

@@ -220,13 +220,13 @@ def gillespie_timed(np.ndarray[np.double_t, ndim=2] theta, np.ndarray[np.int32_t
     cdef np.ndarray[np.double_t] rates_from_current_state = np.empty(n, dtype=np.double)
 
     cdef int j, gene, mutated_gene
-    cdef int sample_index, current_sample_length
+    cdef int current_sample_length
     cdef double current_time, passed_time
     cdef double sum_rates, rate, random_crit, accumulated_rate
 
     cdef int initial_sample_length = initial_state.sum()
 
-    for sample_index in range(sample_num):
+    for _ in range(sample_num):
         in_current_sample[:] = initial_state.copy()
         current_sample_length = initial_sample_length
         current_time = 0.
