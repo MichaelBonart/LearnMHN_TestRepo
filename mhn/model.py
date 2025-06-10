@@ -10,7 +10,7 @@ import itertools
 import json
 import warnings
 from math import factorial
-from typing import Iterator, Optional, Union
+from typing import Iterator, Optional, Union, Literal
 from collections import defaultdict
 
 import matplotlib
@@ -102,6 +102,7 @@ class cMHN:
         trajectory_num: int,
         initial_state: np.ndarray | list[str],
         output_event_names: bool = False,
+        timed: float | Literal[False] = False
     ) -> tuple[list[list[int | str]], np.ndarray]:
         """
         Simulates event accumulation using the Gillespie algorithm. Use np.random.seed() to make results reproducible.
@@ -111,6 +112,7 @@ class cMHN:
             initial_state (np.ndarray | list[str]): Starting state for the trajectories. Can be either a numpy array containing 0s and 1s, where each entry
                                                     represents an event being present (1) or not (0), or a list of strings, where each string is the name of
                                                     an event. The later can only be used if events were specified during creation of the cMHN object.
+            timed (float, optional): If a float is given, only sample trajetories until this (abstract) timepoint (without units). Defaults to False.
             output_event_names (bool, optional): Whether to return event names instead of indices. Defaults to False.
 
         Returns:
@@ -138,25 +140,50 @@ class cMHN:
                 index = self.events.index(event)
                 initial_state[index] = 1
 
-        trajectory_list, observation_times = utilities.gillespie(
-            self.log_theta, initial_state, trajectory_num
-        )
+        if timed is False:
 
-        if output_event_names:
-            if self.events is None:
-                raise ValueError(
-                    "output_event_names can only be set to True, if events was set for the cMHN object"
-                )
-            trajectory_list = list(
-                map(
-                    lambda trajectory: list(
-                        map(lambda event: self.events[event], trajectory)
-                    ),
-                    trajectory_list,
-                )
+            trajectory_list, observation_times = utilities.gillespie(
+                self.log_theta, initial_state, trajectory_num
             )
 
-        return trajectory_list, observation_times
+            if output_event_names:
+                if self.events is None:
+                    raise ValueError(
+                        "output_event_names can only be set to True, if events was set for the cMHN object"
+                    )
+                trajectory_list = list(
+                    map(
+                        lambda trajectory: list(
+                            map(lambda event: self.events[event], trajectory)
+                        ),
+                        trajectory_list,
+                    )
+                )
+
+            return trajectory_list, observation_times
+        
+        else:
+
+            trajectory_list = utilities.gillespie_timed(
+                self.log_theta, initial_state, trajectory_num, timed
+            )
+
+            if output_event_names:
+                if self.events is None:
+                    raise ValueError(
+                        "output_event_names can only be set to True, if events was set for the cMHN object"
+                    )
+                trajectory_list = list(
+                    map(
+                        lambda trajectory: list(
+                            map(lambda event: self.events[event], trajectory)
+                        ),
+                        trajectory_list,
+                    )
+                )
+
+            return trajectory_list
+
 
     def compute_marginal_likelihood(self, state: np.ndarray) -> float:
         """
@@ -355,9 +382,9 @@ class cMHN:
                     # numerator in Gotovos formula
                     num = np.exp(log_theta[e, state_events].sum())
                     pre_st = st - (1 << e)
-                    A_new[st][j * _m : (j + 1) * _m] = num * A[pre_st]
-                    B_new[st][j * _m : (j + 1) * _m, :-1] = B[pre_st]
-                    B_new[st][j * _m : (j + 1) * _m, -1] = e
+                    A_new[st][j * _m: (j + 1) * _m] = num * A[pre_st]
+                    B_new[st][j * _m: (j + 1) * _m, :-1] = B[pre_st]
+                    B_new[st][j * _m: (j + 1) * _m, -1] = e
                 sorting = A_new[st].argsort()[::-1][:m]
                 A_new[st] = A_new[st][sorting]
                 B_new[st] = B_new[st][sorting]
@@ -662,13 +689,13 @@ class cMHN:
                 )
             if self.__class__ == oMHN:
                 _ = ax_brs.text(
-                        0,
-                        dim_theta_1,
-                        np.around(base_rates[-1, 0], decimals=2),
-                        ha="center",
-                        va="center",
-                        fontsize=8,
-                    )
+                    0,
+                    dim_theta_1,
+                    np.around(base_rates[-1, 0], decimals=2),
+                    ha="center",
+                    va="center",
+                    fontsize=8,
+                )
             for i in range(dim_theta_0):
                 for j in range(dim_theta_1):
                     if not i == j and (
@@ -820,7 +847,7 @@ class cMHN:
             min_symbol_size (float): Minimum size of the markers representing events in the tree.
             min_number_of_occurrence (int): Minimum number of occurrence of a state / ordering to be plotted in the tree. Used to avoid clutter.
             legend (Optional[Union[bool, dict]]): If True, a legend is added to the plot. If a dictionary is provided, it is passed to the legend function.
-            
+
         Returns:
              matplotlib.axes.Axes: The axis with the plotted tree.
         """
@@ -837,12 +864,15 @@ class cMHN:
         if ax is None:
             _, ax = plt.subplots()
 
-        circle_num = min(max_event_num, max(map(lambda ordering: len(ordering), orderings)))
-        orderings = list(filter(lambda ordering: orderings.count(ordering) >= min_number_of_occurrence, orderings))
+        circle_num = min(max_event_num, max(
+            map(lambda ordering: len(ordering), orderings)))
+        orderings = list(filter(lambda ordering: orderings.count(
+            ordering) >= min_number_of_occurrence, orderings))
         orderings.sort()
 
         # chronological tree can be seen as a suffix tree
-        suffix_tree_root = {"nodes": {}, "leaves": 0, "passed": 0, "is_end": False}
+        suffix_tree_root = {"nodes": {}, "leaves": 0,
+                            "passed": 0, "is_end": False}
         for ordering in orderings:
             curr_node = suffix_tree_root
             backtracking_nodes = []
@@ -851,7 +881,8 @@ class cMHN:
                 if event not in curr_node["nodes"]:
                     if len(curr_node["nodes"]) > 0:
                         new_leaf = True
-                    curr_node["nodes"][event] = {"nodes": {}, "leaves": 1, "passed": 0, "is_end": False}
+                    curr_node["nodes"][event] = {
+                        "nodes": {}, "leaves": 1, "passed": 0, "is_end": False}
                 curr_node = curr_node["nodes"][event]
                 curr_node["passed"] += 1
                 backtracking_nodes.append(curr_node)
@@ -865,7 +896,8 @@ class cMHN:
         event_coordinates = defaultdict(list)
         event_symbol_sizes = defaultdict(list)
         event_symbol_border = defaultdict(list)
-        max_passed = max(suffix_tree_root[event]["passed"] for event in suffix_tree_root)
+        max_passed = max(suffix_tree_root[event]["passed"]
+                         for event in suffix_tree_root)
 
         def recursive_tree_builder(suffix_tree: dict, min_angle: float, max_angle: float, order_idx: int, prev_coordinates: tuple[float, float]):
             """Recursively build the tree by adding the lines and saving the symbol coordinates in event_coordinates."""
@@ -875,25 +907,33 @@ class cMHN:
 
             circle_radius = inner_circle_radius + order_idx * circle_radius_diff
             curr_angle = min_angle
-            total_leaves = sum(suffix_tree[event]["leaves"] for event in suffix_tree)
+            total_leaves = sum(suffix_tree[event]["leaves"]
+                               for event in suffix_tree)
             for event in suffix_tree:
                 node = suffix_tree[event]
                 span = node["leaves"] / total_leaves * (max_angle - min_angle)
                 symbol_angle = curr_angle + 0.5 * span
-                coordinates = np.sin(symbol_angle) * circle_radius, np.cos(symbol_angle) * circle_radius
+                coordinates = np.sin(
+                    symbol_angle) * circle_radius, np.cos(symbol_angle) * circle_radius
                 event_coordinates[event].append(coordinates)
-                linewidth = max(min_line_width, max_line_width * node["passed"] / max_passed)
-                event_symbol_sizes[event].append(max(linewidth**2 * np.pi / 2, min_symbol_size))
-                event_symbol_border[event].append("black" if node["is_end"] else "white")
+                linewidth = max(min_line_width, max_line_width *
+                                node["passed"] / max_passed)
+                event_symbol_sizes[event].append(
+                    max(linewidth**2 * np.pi / 2, min_symbol_size))
+                event_symbol_border[event].append(
+                    "black" if node["is_end"] else "white")
                 ax.plot(*zip(prev_coordinates, coordinates), marker="", zorder=1,
                         linestyle="-", color="black", linewidth=linewidth)
-                recursive_tree_builder(node["nodes"], curr_angle, curr_angle + span, order_idx + 1, coordinates)
+                recursive_tree_builder(
+                    node["nodes"], curr_angle, curr_angle + span, order_idx + 1, coordinates)
                 curr_angle += span
 
         recursive_tree_builder(suffix_tree_root, 0, 2 * np.pi, 0, (0., 0.))
-        ax.scatter([0], [0], marker="o", color="white", zorder=2, edgecolors="black", s=max_line_width**2 * np.pi)
+        ax.scatter([0], [0], marker="o", color="white", zorder=2,
+                   edgecolors="black", s=max_line_width**2 * np.pi)
         for event, marker in zip(sorted(event_coordinates.keys()), itertools.cycle(markers)):
-            event_name = self.events[event] if self.events is not None else str(event)
+            event_name = self.events[event] if self.events is not None else str(
+                event)
             ax.scatter(*zip(*event_coordinates[event]), label=event_name, alpha=1, zorder=2, marker=marker,
                        edgecolors=event_symbol_border[event], s=event_symbol_sizes[event])
 

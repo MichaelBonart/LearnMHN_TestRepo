@@ -164,8 +164,11 @@ def gillespie(np.ndarray[np.double_t, ndim=2] theta, np.ndarray[np.int32_t, ndim
                     sum_rates += rate
                     j += 1
 
+            # sample holding time
             passed_time = np.random.exponential(1 / sum_rates)
             current_time += passed_time
+
+            
             random_crit = np.random.random(1)[0] * sum_rates
             accumulated_rate = 0.
             for j in range(n - current_sample_length):
@@ -185,6 +188,91 @@ def gillespie(np.ndarray[np.double_t, ndim=2] theta, np.ndarray[np.int32_t, ndim
                 break
 
     return trajectory_list, observation_times
+
+
+@cython.wraparound(False)
+@cython.boundscheck(False)
+def gillespie_timed(np.ndarray[np.double_t, ndim=2] theta, np.ndarray[np.int32_t, ndim=1] initial_state, int sample_num, float obs_time) -> list[list[int]]:
+    """
+    Simulates event accumulation using the Gillespie algorithm, but stops only after a specified observation time.
+
+    Args:
+        theta (np.ndarray[np.double_t, ndim=2]): Theta matrix representing a cMHN or an oMHN.
+        initial_state (np.ndarray[np.int32_t, ndim=1]): Array representing the starting state.
+            Each entry corresponds to an event being present (1) or not (0).
+        sample_num (int): Number of samples to simulate.
+        obs_time (float): The observation time after which the simulation stops.
+
+    Returns:
+        A list of lists where each inner list contains active events in chronological order.
+
+    Raises:
+        ValueError: If the size of theta is neither (n, n) nor (n+1, n).
+    """
+    cdef int n = theta.shape[1]
+    cdef np.ndarray[np.double_t, ndim=2] exp_theta = np.exp(theta)
+
+    cdef list trajectory_list = []
+    cdef list trajectory
+
+    cdef np.ndarray[np.int32_t] in_current_sample = np.zeros(n, dtype=np.int32)
+    cdef np.ndarray[np.int32_t] possible_gene_mutations = np.empty(n, dtype=np.int32)
+    cdef np.ndarray[np.double_t] rates_from_current_state = np.empty(n, dtype=np.double)
+
+    cdef int j, gene, mutated_gene
+    cdef int sample_index, current_sample_length
+    cdef double current_time, passed_time
+    cdef double sum_rates, rate, random_crit, accumulated_rate
+
+    cdef int initial_sample_length = initial_state.sum()
+
+    for sample_index in range(sample_num):
+        in_current_sample[:] = initial_state.copy()
+        current_sample_length = initial_sample_length
+        current_time = 0.
+        trajectory = [gene for gene in range(n) if initial_state[gene]]
+        while 1:
+            sum_rates = 0.
+            j = 0
+
+            # compute all rates that lead to other states
+            for gene in range(n):
+                if not in_current_sample[gene]:
+                    possible_gene_mutations[j] = gene
+                    rate = exp_theta[gene, gene]
+                    for mutated_gene in range(n):
+                        if in_current_sample[mutated_gene]:
+                            rate *= exp_theta[gene, mutated_gene]
+                    rates_from_current_state[j] = rate
+                    sum_rates += rate
+                    j += 1
+
+            if sum_rates == 0:
+                # if no rates are left, we stop the simulation
+                trajectory_list.append(trajectory)
+                break
+
+            # sample holding time
+            passed_time = np.random.exponential(1 / sum_rates)
+            current_time += passed_time
+            if current_time > obs_time:
+                # if we reached the observation time, we stop the simulation
+                trajectory_list.append(trajectory)
+                break
+
+            random_crit = np.random.random(1)[0] * sum_rates
+            accumulated_rate = 0.
+            for j in range(n - current_sample_length):
+                rate = rates_from_current_state[j]
+                gene = possible_gene_mutations[j]
+                accumulated_rate += rate
+                if random_crit <= accumulated_rate:
+                    in_current_sample[gene] = 1
+                    current_sample_length += 1
+                    trajectory.append(gene)
+                    break
+
+    return trajectory_list
 
 
 def compute_next_event_probs(np.ndarray[np.double_t, ndim=2] theta, np.ndarray[np.int32_t, ndim=1] current_state, double observation_rate = 0) -> np.ndarray:
