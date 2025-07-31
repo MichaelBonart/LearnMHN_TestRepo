@@ -102,7 +102,8 @@ class cMHN:
         trajectory_num: int,
         initial_state: np.ndarray | list[str],
         output_event_names: bool = False,
-        timed: float | Literal[False] = False
+        timed: float | Literal[False] = False,
+        return_event_times: bool = False
     ) -> tuple[list[list[int | str]], np.ndarray] | list[list[int | str]]:
         """
         Simulates event accumulation using the Gillespie algorithm. Use np.random.seed() to make results reproducible.
@@ -112,11 +113,12 @@ class cMHN:
             initial_state (np.ndarray | list[str]): Starting state for the trajectories. Can be either a numpy array containing 0s and 1s, where each entry
                                                     represents an event being present (1) or not (0), or a list of strings, where each string is the name of
                                                     an event. The later can only be used if events were specified during creation of the cMHN object.
-            timed (float, optional): If a float is given, only sample trajetories until this (abstract) timepoint (without units). In this case, only the trajectories are returned. Defaults to False.
             output_event_names (bool, optional): Whether to return event names instead of indices. Defaults to False.
+            timed (float, optional): If a float is given, only sample trajetories until this (abstract) timepoint (without units). In this case, only the trajectories are returned. May also be np.inf. Defaults to False.
+            return_event_times (bool, optional): If True, returns the observation times of all events in the trajectories instead of only the observation times. Defaults to False.
 
         Returns:
-            tuple[list[list[int | str]], np.ndarray]: List of trajectories and, if applicable their observation times.
+            tuple[list[list[int | str]], np.ndarray]: List of trajectories and, if applicable their observation times or all event's accumulation times.
         """
         if type(initial_state) is np.ndarray:
             initial_state = initial_state.astype(np.int32)
@@ -143,7 +145,7 @@ class cMHN:
         if timed is False:
 
             trajectory_list, observation_times = utilities.gillespie(
-                self.log_theta, initial_state, trajectory_num
+                self.log_theta, initial_state, trajectory_num, return_event_times
             )
 
             if output_event_names:
@@ -165,7 +167,7 @@ class cMHN:
         else:
 
             trajectory_list = utilities.gillespie_timed(
-                self.log_theta, initial_state, trajectory_num, timed
+                self.log_theta, initial_state, trajectory_num, timed, return_event_times
             )
 
             if output_event_names:
