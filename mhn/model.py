@@ -104,7 +104,7 @@ class cMHN:
         output_event_names: bool = False,
         timed: float | Literal[False] = False,
         return_event_times: bool = False
-    ) -> tuple[list[list[int | str]], np.ndarray] | list[list[int | str]]:
+    ) -> tuple[list[list[int | str]], list[list[float]]] | tuple[list[list[int | str]], np.ndarray] | list[list[int | str]]:
         """
         Simulates event accumulation using the Gillespie algorithm. Use np.random.seed() to make results reproducible.
 
@@ -116,9 +116,6 @@ class cMHN:
             output_event_names (bool, optional): Whether to return event names instead of indices. Defaults to False.
             timed (float, optional): If a float is given, only sample trajetories until this (abstract) timepoint (without units). In this case, only the trajectories are returned. May also be np.inf. Defaults to False.
             return_event_times (bool, optional): If True, returns the observation times of all events in the trajectories instead of only the observation times. Defaults to False.
-
-        Returns:
-            tuple[list[list[int | str]], np.ndarray]: List of trajectories and, if applicable their observation times or all event's accumulation times.
         """
         if type(initial_state) is np.ndarray:
             initial_state = initial_state.astype(np.int32)
@@ -144,47 +141,37 @@ class cMHN:
 
         if timed is False:
 
-            trajectory_list, observation_times = utilities.gillespie(
+            trajectory_list, second_out = utilities.gillespie(
                 self.log_theta, initial_state, trajectory_num, return_event_times
             )
 
-            if output_event_names:
-                if self.events is None:
-                    raise ValueError(
-                        "output_event_names can only be set to True, if events was set for the cMHN object"
-                    )
-                trajectory_list = list(
-                    map(
-                        lambda trajectory: list(
-                            map(lambda event: self.events[event], trajectory)
-                        ),
-                        trajectory_list,
-                    )
-                )
-
-            return trajectory_list, observation_times
-        
         else:
-
-            trajectory_list = utilities.gillespie_timed(
-                self.log_theta, initial_state, trajectory_num, timed, return_event_times
-            )
-
-            if output_event_names:
-                if self.events is None:
-                    raise ValueError(
-                        "output_event_names can only be set to True, if events was set for the cMHN object"
-                    )
-                trajectory_list = list(
-                    map(
-                        lambda trajectory: list(
-                            map(lambda event: self.events[event], trajectory)
-                        ),
-                        trajectory_list,
-                    )
+            if return_event_times:
+                trajectory_list, second_out = utilities.gillespie_timed(
+                    self.log_theta, initial_state, trajectory_num, timed, return_event_times
                 )
+            else:
+                trajectory_list = utilities.gillespie_timed(
+                    self.log_theta, initial_state, trajectory_num, timed, return_event_times
+                )
+                second_out = None
+        
+        if output_event_names:
+            if self.events is None:
+                raise ValueError(
+                    "output_event_names can only be set to True, if events was set for the cMHN object"
+                )
+            trajectory_list = [
+                [self.events[event] for event in trajectory]
+                for trajectory in trajectory_list
+            ]
 
-            return trajectory_list
+        if timed is False:
+            return trajectory_list, second_out
+        else:
+            return (trajectory_list, second_out) if return_event_times else trajectory_list
+
+
 
 
     def compute_marginal_likelihood(self, state: np.ndarray) -> float:
