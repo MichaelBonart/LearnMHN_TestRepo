@@ -998,23 +998,15 @@ class cMHN:
 
             m_min = ax.scatter([], [], c="gray", s=_min_sym[1], marker="o")
             m_max = ax.scatter([], [], c="gray", s=_max_sym[1], marker="o")
-            l_min = ax.plot(
-                [],
-                [],
-                c="black",
-                lw=max(min_line_width, max_line_width * min_passed / max_passed),
-            )[0]
-            l_max = ax.plot([], [], c="black", lw=max_line_width)[0]
             size_legend = ax.legend(
-                handles=[m_min, m_max, l_min, l_max],
+                handles=[m_min, m_max],
                 labels=[
                     f"{min_passed} Patients",
-                    f"{max_passed} Patients",
-                    f"{min_passed} Patients",
-                    f"{max_passed} Patients",
+                    f"{max_passed} Patients"
                 ],
                 loc="lower left",
             )
+            size_legend.set_title("Symbol Size", prop={"weight": "bold"})
             ax.add_artist(size_legend)
 
         return ax
