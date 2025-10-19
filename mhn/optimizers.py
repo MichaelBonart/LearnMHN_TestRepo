@@ -70,6 +70,7 @@ class _Optimizer(abc.ABC):
 
         self._init_theta = None
         self.__custom_callback = None
+        self._theta_restriction_mask = None
 
         self.__backup_steps = -1
         self.__backup_filename = None
@@ -225,6 +226,31 @@ class _Optimizer(abc.ABC):
             self._gradient_and_score_func)
         gradient_func = self._regularized_gradient_func_builder(
             self._gradient_and_score_func)
+        
+        #impose restrictions if present
+        if self._theta_restriction_mask is not None:
+            print("Imposing restriction on theta during training...")
+            print(self._theta_restriction_mask)
+
+            def func_restriction(_score_func, _gradient_func, _mask):
+                mask_flattened= self._theta_restriction_mask.flatten()
+
+                def restricted_score_func(theta: np.ndarray, states: StateContainer, lam: float,
+                                            n: int, score_grad_container: list) -> float:
+                
+                    return _score_func(theta*mask_flattened, states, lam, n, score_grad_container)
+                
+                def restricted_gradient_func(theta: np.ndarray, states: StateContainer, lam: float,
+                                                        n: int, score_grad_container: list) -> np.ndarray:
+                    
+                    return mask_flattened*_gradient_func(theta, states,lam,n,score_grad_container)
+                
+                return restricted_score_func, restricted_gradient_func
+
+            
+
+            score_func, gradient_func = func_restriction(score_func, gradient_func, self._theta_restriction_mask)
+
 
         result = reg_optim.learn_mhn(self._data, score_func, gradient_func, self._init_theta, lam, maxit, trace, reltol,
                                      round_result, callback_func)
@@ -384,6 +410,52 @@ class _Optimizer(abc.ABC):
             grad_score_func, penalty_gradient
         )
         return self
+    
+
+
+    
+    def set_restriction(
+        self,    
+        restriction_mat=None,
+        restrict_events_out=None,
+        restrict_events_in=None,
+        restrict_events_br=None):
+        """
+        Sets a restriction imposed on theta during training. Restricted entries of theta remain unchanged from init_theta.
+
+        You have two options:
+            -set 'restriction_mat': Manually define matrix of 0's and 1's to select which theta entries to restrict. 
+            (0 = theta entry is restricted, 1 = theta entry altered by training iterations as usual)
+
+            -set at least one of the 'restrict_events_...' arguments: choose events, whose entries in theta shall be restricted
+                -'restrict_events_out':  restrict events' columns    (excluding base rates)
+                -'restrict_events_in':   restrict events' rows       (excluding base rates)
+                -'restrict_events_br':   restrict events' base rates
+
+        The Penalty enum is part of this optimizer class.
+
+        Args:
+            penalty (Penalty | tuple[Callable[[np.ndarray], float], Callable[[np.ndarray], np.ndarray]]): The penalty to use (L1, L2, SYM_SPARSE).
+
+        Returns:
+            _Optimizer: The optimizer instance.
+
+        Raises:
+            ValueError: If the given penalty is not an instance of
+            Penalty or a tuple of two functions.
+        """
+
+
+        if restriction_mat is None:
+            #generate restriction_mat according to 'restrict_events_...'-arguments
+            restriction_mat=np.ones(shape=(len(self._events),len(self._events)))
+
+        
+        self._theta_restriction_mask=restriction_mat
+
+
+        return self
+
 
 
 class cMHNOptimizer(_Optimizer):
@@ -764,6 +836,52 @@ class oMHNOptimizer(cMHNOptimizer):
         self._regularized_gradient_func_builder = lambda grad_score_func: penalties_omhn.build_regularized_gradient_func(
             grad_score_func, penalty_gradient
         )
+        return self
+
+
+    def set_restriction(
+        self,    
+        restriction_mat=None,
+        restrict_events_out=None,
+        restrict_events_in=None,
+        restrict_events_br=None,
+        restrict_events_or=None):
+        """
+        Sets a restriction imposed on theta during training. Restricted entries of theta remain unchanged from init_theta.
+
+        You have two options:
+            -set 'restriction_mat': Manually define matrix of 0's and 1's to select which theta entries to restrict. 
+            (0 = theta entry is restricted, 1 = theta entry altered by training iterations as usual)
+
+            -set at least one of the 'restrict_events_...' arguments: choose events, whose entries in theta shall be restricted
+                -'restrict_events_out':  restrict events' columns    (excluding base rates)
+                -'restrict_events_in':   restrict events' rows       (excluding base rates)
+                -'restrict_events_br':   restrict events' base rates
+                -'restrict_events_or':   restrict events' observation rates
+
+        The Penalty enum is part of this optimizer class.
+
+        Args:
+            penalty (Penalty | tuple[Callable[[np.ndarray], float], Callable[[np.ndarray], np.ndarray]]): The penalty to use (L1, L2, SYM_SPARSE).
+
+        Returns:
+            _Optimizer: The optimizer instance.
+
+        Raises:
+            ValueError: If the given penalty is not an instance of
+            Penalty or a tuple of two functions.
+        """
+
+
+        if restriction_mat is None:
+            #generate restriction_mat according to 'restrict_events_...'-arguments
+            restriction_mat=np.ones(shape=(len(self._events)+1,len(self._events)),)
+            
+
+        
+        self._theta_restriction_mask=restriction_mat
+
+
         return self
 
 
