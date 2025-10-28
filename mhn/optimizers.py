@@ -417,8 +417,8 @@ class _Optimizer(abc.ABC):
     def set_restriction(
         self,    
         restriction_mat=None,
-        restrict_events_out=None,
-        restrict_events_in=None,
+        restrict_events_col=None,
+        restrict_events_row=None,
         restrict_events_br=None):
         """
         Sets a restriction imposed on theta during training. Restricted entries of theta remain unchanged from init_theta.
@@ -426,13 +426,15 @@ class _Optimizer(abc.ABC):
         You have two options:
             -set 'restriction_mat': Manually define matrix of 0's and 1's to select which theta entries to restrict. 
             (0 = theta entry is restricted, 1 = theta entry altered by training iterations as usual)
+            shape of 'restriction_mat' has to match 'theta'
 
+            [[NOT YET IMPLEMENTED]
             -set at least one of the 'restrict_events_...' arguments: choose events, whose entries in theta shall be restricted
-                -'restrict_events_out':  restrict events' columns    (excluding base rates)
-                -'restrict_events_in':   restrict events' rows       (excluding base rates)
+                -'restrict_events_col':  restrict events' columns    (excluding base rates)
+                -'restrict_events_row':   restrict events' rows       (excluding base rates)
                 -'restrict_events_br':   restrict events' base rates
-
-        The Penalty enum is part of this optimizer class.
+            ]
+        
 
         Args:
             penalty (Penalty | tuple[Callable[[np.ndarray], float], Callable[[np.ndarray], np.ndarray]]): The penalty to use (L1, L2, SYM_SPARSE).
@@ -449,7 +451,8 @@ class _Optimizer(abc.ABC):
         if restriction_mat is None:
             #generate restriction_mat according to 'restrict_events_...'-arguments
             restriction_mat=np.ones(shape=(len(self._events),len(self._events)))
-
+            if not restrict_events_col is None:
+                restriction_mat[:,restrict_events_col]=0
         
         self._theta_restriction_mask=restriction_mat
 
