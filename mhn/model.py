@@ -502,6 +502,7 @@ class cMHN:
         cmap_brs: Union[str, matplotlib.colors.Colormap] = "Greens",
         colorbar: bool = True,
         annot: Union[float, bool] = 0.1,
+        overlay_restriction_mask = None,
         ax: Optional[np.arraymatplotlib.axes.Axes] = None,
         logarithmic: bool = True,
     ) -> (
@@ -527,6 +528,9 @@ class cMHN:
                 If boolean, either all or no annotations are displayed. If numerical, displays
                 annotations for all effects greater than this threshold in the logarithmic theta matrix.
                 Defaults to 0.1.
+            overlay_restriction_mask (np.ndarray, optional):
+                Restriction mask to be overlayed on plot of theta. Depicts restricted entries of theta with 'X'.
+                Defaults to None.
             ax (Optional[matplotlib.axes.Axes], optional):
                 Matplotlib axes to plot on. Defaults to None.
             logarithmic (bool, optional):
@@ -669,6 +673,24 @@ class cMHN:
                             ha="center",
                             va="center",
                             fontsize=8,
+                        )
+
+        # add overlay of theta restriction
+        if not overlay_restriction_mask is None:
+            for i in range(dim_theta_0):
+                for j in range(dim_theta_1):
+                    if not i == j and (
+                        overlay_restriction_mask[i,j] == 0
+                    ):
+                        _ = ax_theta.text(
+                            j,
+                            i,
+                            u"\u2A2F",
+                            ha="center",
+                            va="center",
+                            fontsize=16,
+                            color="grey",
+                            fontweight='light'
                         )
 
         # add colorbars
