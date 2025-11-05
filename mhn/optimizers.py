@@ -416,46 +416,40 @@ class _Optimizer(abc.ABC):
     
     def set_restriction(
         self,    
-        restriction_mat=None,
-        restrict_events_col=None,
-        restrict_events_row=None,
-        restrict_events_br=None):
+        restriction_mask:np.ndarray | None = None):
         """
-        Sets a restriction imposed on theta during training. Restricted entries of theta remain unchanged from init_theta.
-
-        You have two options:
-            -set 'restriction_mat': Manually define matrix of 0's and 1's to select which theta entries to restrict. 
-            (0 = theta entry is restricted, 1 = theta entry altered by training iterations as usual)
-            shape of 'restriction_mat' has to match 'theta'
-
-            [[NOT YET IMPLEMENTED]
-            -set at least one of the 'restrict_events_...' arguments: choose events, whose entries in theta shall be restricted
-                -'restrict_events_col':  restrict events' columns    (excluding base rates)
-                -'restrict_events_row':   restrict events' rows       (excluding base rates)
-                -'restrict_events_br':   restrict events' base rates
-            ]
-        
+        Sets a restriction imposed on selected entries of log_theta. Restricted entries of log_theta will not be altered during training.
+        Their values are thus given by the '_init_theta' property of the Optimizer class. For a non-default choice of '_init_theta' call set_init_theta().
+       
 
         Args:
-            penalty (Penalty | tuple[Callable[[np.ndarray], float], Callable[[np.ndarray], np.ndarray]]): The penalty to use (L1, L2, SYM_SPARSE).
+            restriction_mask (np.ndarray | pd.Dataframe): Matrix of 0's and 1's determining which entries of log_theta will be restricted.
+            (0 = log_theta entry will be restricted, 1 = log_theta entry will be altered by training iterations as usual).
+            Shape of 'restriction_mask' has to match the shape of theta.
+            Defaults to None.
 
         Returns:
             _Optimizer: The optimizer instance.
 
         Raises:
-            ValueError: If the given penalty is not an instance of
-            Penalty or a tuple of two functions.
+            ValueError: If self._events was not previously specified (e.g. no data loaded).
+            ValueError: If shape of given matrix does not match log_theta.
         """
 
 
-        if restriction_mat is None:
-            #generate restriction_mat according to 'restrict_events_...'-arguments
-            restriction_mat=np.ones(shape=(len(self._events),len(self._events)))
-            if not restrict_events_col is None:
-                restriction_mat[:,restrict_events_col]=0
+        if self._events is None:
+            raise ValueError("Specify the set of events (e.g. by loading data) before calling this method.")
         
-        self._theta_restriction_mask=restriction_mat
+        n_ev=len(self._events)
 
+        if restriction_mask is None:
+            restriction_mask=np.ones(shape=(n_ev,n_ev))
+
+        if not restriction_mask.shape == (n_ev,n_ev):
+            raise ValueError(f"Shape of 'restriction_mask' ({restriction_mask.shape}) did not match shape of log_theta ({(n_ev,n_ev)}).")
+        
+
+        self._theta_restriction_mask=restriction_mask
 
         return self
 
@@ -844,28 +838,17 @@ class oMHNOptimizer(cMHNOptimizer):
 
     def set_restriction(
         self,    
-        restriction_mat=None,
-        restrict_events_out=None,
-        restrict_events_in=None,
-        restrict_events_br=None,
-        restrict_events_or=None):
+        restriction_mask : np.ndarray | None =None):
         """
-        Sets a restriction imposed on theta during training. Restricted entries of theta remain unchanged from init_theta.
-
-        You have two options:
-            -set 'restriction_mat': Manually define matrix of 0's and 1's to select which theta entries to restrict. 
-            (0 = theta entry is restricted, 1 = theta entry altered by training iterations as usual)
-
-            -set at least one of the 'restrict_events_...' arguments: choose events, whose entries in theta shall be restricted
-                -'restrict_events_out':  restrict events' columns    (excluding base rates)
-                -'restrict_events_in':   restrict events' rows       (excluding base rates)
-                -'restrict_events_br':   restrict events' base rates
-                -'restrict_events_or':   restrict events' observation rates
-
-        The Penalty enum is part of this optimizer class.
+        Sets a restriction imposed on selected entries of log_theta. Restricted entries of log_theta will not be altered during training.
+        Their values are thus given by the '_init_theta' property of the Optimizer class. For a non-default choice of '_init_theta' call set_init_theta().
+       
 
         Args:
-            penalty (Penalty | tuple[Callable[[np.ndarray], float], Callable[[np.ndarray], np.ndarray]]): The penalty to use (L1, L2, SYM_SPARSE).
+            restriction_mask (np.ndarray | pd.Dataframe): Matrix of 0's and 1's determining which entries of log_theta will be restricted.
+            (0 = log_theta entry will be restricted, 1 = log_theta entry will be altered by training iterations as usual).
+            Shape of 'restriction_mask' has to match the shape of theta.
+            Defaults to None.
 
         Returns:
             _Optimizer: The optimizer instance.
@@ -875,15 +858,19 @@ class oMHNOptimizer(cMHNOptimizer):
             Penalty or a tuple of two functions.
         """
 
-
-        if restriction_mat is None:
-            #generate restriction_mat according to 'restrict_events_...'-arguments
-            restriction_mat=np.ones(shape=(len(self._events)+1,len(self._events)),)
-            
-
+        if self._events is None:
+            raise ValueError("Specify the set of events (e.g. by loading data) before calling this method.")
         
-        self._theta_restriction_mask=restriction_mat
+        n_ev=len(self._events)
 
+        if restriction_mask is None:
+            restriction_mask=np.ones(shape=(n_ev+1,n_ev))
+
+        if not restriction_mask.shape == (n_ev+1,n_ev):
+            raise ValueError(f"Shape of 'restriction_mask' ({restriction_mask.shape}) did not match shape of log_theta ({(n_ev+1,n_ev)}).")
+        
+
+        self._theta_restriction_mask=restriction_mask
 
         return self
 
