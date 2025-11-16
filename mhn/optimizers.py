@@ -97,7 +97,25 @@ class _Optimizer(abc.ABC):
 
         Returns:
             _Optimizer: The optimizer instance.
+
+        Raises:
+            ValueError: If shape of given matrix does not match log_theta.
+            ValueError: If shape of given matrix does not match theta_restriction_mask.
         """
+
+        if init is not None:
+            #check if shape of init matches theta
+            if self._data is not None:
+                _theta_shape=self.get_theta_shape()
+
+                if init.shape != _theta_shape:
+                    raise ValueError(f"Shape of 'init' ({init.shape}) did not match shape of log_theta ({_theta_shape}).")
+            
+            #check if shape of init matches theta_restriction_mask
+            if (self._theta_restriction_mask is not None) and init.shape != self._theta_restriction_mask.shape:
+                raise ValueError(f"Shape of 'init' ({init.shape}) did not match shape of theta_restriction_mask ({self._theta_restriction_mask.shape}).")
+        
+
         self._init_theta = init
         return self
 
@@ -133,6 +151,23 @@ class _Optimizer(abc.ABC):
             },
             'event statistics': event_dataframe
         }
+    
+    def get_theta_shape(self) -> tuple[int, int]:
+        """
+        Gets shape of theta, that will result from training on loaded data.
+
+        Raises:
+            ValueError: If no data has been loaded.
+
+        Returns:
+            shape: The shape of resulting theta as a tuple of integers.
+        """
+
+        if self._data is None:
+            raise ValueError("Specify the number of events (e.g. by loading data) before calling this method.")
+        
+        n = self._data.get_data_shape()[1]
+        return (n, n)
 
     def set_callback_func(self, callback=None) -> _Optimizer:
         """
@@ -229,25 +264,18 @@ class _Optimizer(abc.ABC):
         
         #impose restrictions if present
         if self._theta_restriction_mask is not None:
-            print("Imposing restriction on theta during training...")
-            print(self._theta_restriction_mask)
 
+            #redefine score and gradient function
             def func_restriction(_score_func, _gradient_func, _mask):
-                mask_flattened= self._theta_restriction_mask.flatten()
+                mask_flattened= _mask.flatten()
 
-                def restricted_score_func(theta: np.ndarray, states: StateContainer, lam: float,
-                                            n: int, score_grad_container: list) -> float:
-                
+                def restricted_score_func(theta: np.ndarray, states: StateContainer, lam: float, n: int, score_grad_container: list) -> float:
                     return _score_func(theta*mask_flattened, states, lam, n, score_grad_container)
                 
-                def restricted_gradient_func(theta: np.ndarray, states: StateContainer, lam: float,
-                                                        n: int, score_grad_container: list) -> np.ndarray:
-                    
+                def restricted_gradient_func(theta: np.ndarray, states: StateContainer, lam: float, n: int, score_grad_container: list) -> np.ndarray:
                     return mask_flattened*_gradient_func(theta, states,lam,n,score_grad_container)
                 
                 return restricted_score_func, restricted_gradient_func
-
-            
 
             score_func, gradient_func = func_restriction(score_func, gradient_func, self._theta_restriction_mask)
 
@@ -425,28 +453,28 @@ class _Optimizer(abc.ABC):
         Args:
             restriction_mask (np.ndarray | pd.Dataframe): Matrix of 0's and 1's determining which entries of log_theta will be restricted.
             (0 = log_theta entry will be restricted, 1 = log_theta entry will be altered by training iterations as usual).
-            Shape of 'restriction_mask' has to match the shape of theta.
+            Shape of 'restriction_mask' has to match the shape of log_theta.
             Defaults to None.
 
         Returns:
             _Optimizer: The optimizer instance.
 
         Raises:
-            ValueError: If self._events was not previously specified (e.g. no data loaded).
             ValueError: If shape of given matrix does not match log_theta.
+            ValueError: If shape of given matrix does not match init_theta.
         """
 
+        if restriction_mask is not None:
+            #check if shape of restriction_mask matches theta
+            if self._data is not None:
+                _theta_shape=self.get_theta_shape()
 
-        if self._events is None:
-            raise ValueError("Specify the set of events (e.g. by loading data) before calling this method.")
-        
-        n_ev=len(self._events)
-
-        if restriction_mask is None:
-            restriction_mask=np.ones(shape=(n_ev,n_ev))
-
-        if not restriction_mask.shape == (n_ev,n_ev):
-            raise ValueError(f"Shape of 'restriction_mask' ({restriction_mask.shape}) did not match shape of log_theta ({(n_ev,n_ev)}).")
+                if restriction_mask.shape != _theta_shape:
+                    raise ValueError(f"Shape of 'restriction_mask' ({restriction_mask.shape}) did not match shape of log_theta ({_theta_shape}).")
+            
+            #check if shape of restriction_mask matches init_theta
+            if (self._init_theta is not None) and restriction_mask.shape != self._init_theta.shape:
+                raise ValueError(f"Shape of 'restriction_mask' ({restriction_mask.shape}) did not match shape of init_theta ({self._init_theta.shape}).")
         
 
         self._theta_restriction_mask=restriction_mask
@@ -474,6 +502,10 @@ class cMHNOptimizer(_Optimizer):
 
         Returns:
             cMHNOptimizer: This optimizer object.
+
+        Raises:
+            ValueError: If shape of log_theta derived from loaded data does not match init_theta.
+            ValueError: If shape of log_theta derived from loaded data does not match theta_restriction_mask.
         """
         if isinstance(data_matrix, pd.DataFrame):
             self._events = data_matrix.columns.to_list()
@@ -483,6 +515,17 @@ class cMHNOptimizer(_Optimizer):
         data_matrix = self._preprocess_binary_matrix(data_matrix)
         self._data = StateContainer(data_matrix)
         self._bin_datamatrix = data_matrix
+
+        #check if loaded data fits shape of init_theta
+        _theta_shape=self.get_theta_shape()
+        if (self._init_theta is not None) and self._init_theta.shape !=_theta_shape:
+            raise ValueError(f"Shape of log_theta derived from loaded data ({_theta_shape}) did not match shape of init_theta ({self._init_theta.shape}).")
+            
+        #check if loaded data fits shape of theta_restriction_mask
+        if (self._theta_restriction_mask is not None) and self._theta_restriction_mask.shape !=_theta_shape:
+            raise ValueError(f"Shape of log_theta derived from loaded data ({_theta_shape}) did not match shape of theta_restriction_mask ({self._theta_restriction_mask.shape}).")
+        
+        
         return self
 
     def load_data_from_csv(self, src: str, delimiter: str = ',', **kwargs):
@@ -687,6 +730,23 @@ class oMHNOptimizer(cMHNOptimizer):
                 grad_score_func, penalties_omhn.l1_)
         self._OutputMHNClass = model.oMHN
 
+    def get_theta_shape(self) -> tuple[int, int]:
+        """
+        Gets shape of oMHN-theta, that will result from training on loaded data.
+
+        Raises:
+            ValueError: If no data has been loaded.
+
+        Returns:
+            shape: The shape of resulting theta as a tuple of integers.
+        """
+
+        if self._data is None:
+            raise ValueError("Specify the number of events (e.g. by loading data) before calling this method.")
+        
+        n = self._data.get_data_shape()[1]
+        return (n+1, n)
+
     def train(self, lam: float = None, maxit: int = 5000, trace: bool = False,
               reltol: float = 1e-7, round_result: bool = True) -> model.oMHN:
         """
@@ -833,45 +893,6 @@ class oMHNOptimizer(cMHNOptimizer):
         self._regularized_gradient_func_builder = lambda grad_score_func: penalties_omhn.build_regularized_gradient_func(
             grad_score_func, penalty_gradient
         )
-        return self
-
-
-    def set_restriction(
-        self,    
-        restriction_mask : np.ndarray | None =None):
-        """
-        Sets a restriction imposed on selected entries of log_theta. Restricted entries of log_theta will not be altered during training.
-        Their values are thus given by the '_init_theta' property of the Optimizer class. For a non-default choice of '_init_theta' call set_init_theta().
-       
-
-        Args:
-            restriction_mask (np.ndarray | pd.Dataframe): Matrix of 0's and 1's determining which entries of log_theta will be restricted.
-            (0 = log_theta entry will be restricted, 1 = log_theta entry will be altered by training iterations as usual).
-            Shape of 'restriction_mask' has to match the shape of theta.
-            Defaults to None.
-
-        Returns:
-            _Optimizer: The optimizer instance.
-
-        Raises:
-            ValueError: If the given penalty is not an instance of
-            Penalty or a tuple of two functions.
-        """
-
-        if self._events is None:
-            raise ValueError("Specify the set of events (e.g. by loading data) before calling this method.")
-        
-        n_ev=len(self._events)
-
-        if restriction_mask is None:
-            restriction_mask=np.ones(shape=(n_ev+1,n_ev))
-
-        if not restriction_mask.shape == (n_ev+1,n_ev):
-            raise ValueError(f"Shape of 'restriction_mask' ({restriction_mask.shape}) did not match shape of log_theta ({(n_ev+1,n_ev)}).")
-        
-
-        self._theta_restriction_mask=restriction_mask
-
         return self
 
 
