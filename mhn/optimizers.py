@@ -265,7 +265,7 @@ class _Optimizer(abc.ABC):
         #impose restrictions if present
         if self._theta_restriction_mask is not None:
 
-            #redefine score and gradient function
+            #redefine score and gradient function to incorporate restriction mask
             def func_restriction(_score_func, _gradient_func, _mask):
                 mask_flattened= _mask.flatten()
 
@@ -291,6 +291,7 @@ class _Optimizer(abc.ABC):
             meta={
                 "lambda": lam,
                 "init": self._init_theta,
+                "mask": self._theta_restriction_mask,
                 "maxit": maxit,
                 "reltol": reltol,
                 "score": result.fun,
