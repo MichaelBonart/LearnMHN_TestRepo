@@ -502,7 +502,7 @@ class cMHN:
         cmap_brs: Union[str, matplotlib.colors.Colormap] = "Greens",
         colorbar: bool = True,
         annot: Union[float, bool] = 0.1,
-        overlay_restriction_mask = None,
+        overlay_restriction_mask : bool = True,
         ax: Optional[np.arraymatplotlib.axes.Axes] = None,
         logarithmic: bool = True,
     ) -> (
@@ -528,9 +528,9 @@ class cMHN:
                 If boolean, either all or no annotations are displayed. If numerical, displays
                 annotations for all effects greater than this threshold in the logarithmic theta matrix.
                 Defaults to 0.1.
-            overlay_restriction_mask (np.ndarray, optional):
-                Restriction mask to be overlayed on plot of theta. Depicts restricted entries of theta with 'X'.
-                Defaults to None.
+            overlay_restriction_mask (bool, optional):
+                If set to True, restriction mask will be overlayed on plot of theta. Depicts restricted entries of theta with 'X'.
+                Defaults to True.
             ax (Optional[matplotlib.axes.Axes], optional):
                 Matplotlib axes to plot on. Defaults to None.
             logarithmic (bool, optional):
@@ -676,11 +676,26 @@ class cMHN:
                         )
 
         # add overlay of theta restriction
-        if not overlay_restriction_mask is None:
+        if overlay_restriction_mask and (self.meta is not None) and (self.meta['mask'] is not None):
+            restriction_mask : np.ndarray = self.meta['mask']
+
+            for i in range(dim_theta_1):
+                if restriction_mask[i,i] == 0:
+                    _ = ax_brs.text(
+                        0,
+                        i,
+                        u"\u2A2F",
+                        ha="center",
+                        va="center",
+                        fontsize=16,
+                        color='grey',
+                        fontweight='light'
+                    )
+
             for i in range(dim_theta_0):
                 for j in range(dim_theta_1):
                     if not i == j and (
-                        overlay_restriction_mask[i,j] == 0
+                        restriction_mask[i,j] == 0
                     ):
                         _ = ax_theta.text(
                             j,
@@ -689,7 +704,7 @@ class cMHN:
                             ha="center",
                             va="center",
                             fontsize=16,
-                            color="grey",
+                            color='grey',
                             fontweight='light'
                         )
 
