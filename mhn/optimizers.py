@@ -622,6 +622,10 @@ class cMHNOptimizer(_Optimizer):
         opt._regularized_score_func_builder = self._regularized_score_func_builder
         opt._regularized_gradient_func_builder = self._regularized_gradient_func_builder
 
+        #make sure that the same init_theta and theta_restriction_mask are used
+        opt.set_init_theta(self._init_theta)
+        opt.set_restriction(self._theta_restriction_mask)
+
         disable_progressbar = not show_progressbar
 
         for j in trange(nfolds, desc="Cross-Validation Folds", position=0, disable=disable_progressbar):
