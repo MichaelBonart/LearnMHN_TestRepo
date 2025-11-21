@@ -103,20 +103,12 @@ class _Optimizer(abc.ABC):
             ValueError: If shape of given matrix does not match theta_restriction_mask.
         """
 
-        if init is not None:
-            #check if shape of init matches theta
-            if self._data is not None:
-                _theta_shape=self.get_theta_shape()
-
-                if init.shape != _theta_shape:
-                    raise ValueError(f"Shape of 'init' ({init.shape}) did not match shape of log_theta ({_theta_shape}).")
-            
-            #check if shape of init matches theta_restriction_mask
-            if (self._theta_restriction_mask is not None) and init.shape != self._theta_restriction_mask.shape:
-                raise ValueError(f"Shape of 'init' ({init.shape}) did not match shape of theta_restriction_mask ({self._theta_restriction_mask.shape}).")
-        
-
         self._init_theta = init
+
+        mat_compatible = self._check_matrix_shape_compatibility()
+        if not mat_compatible[0]:
+            warnings.warn(mat_compatible[1])
+
         return self
 
     def get_data_properties(self) -> dict:
@@ -245,6 +237,10 @@ class _Optimizer(abc.ABC):
         """
         if self._data is None:
             raise ValueError("You have to load data before training!")
+
+        mat_compatible = self._check_matrix_shape_compatibility()
+        if not mat_compatible[0]:
+            raise ValueError(mat_compatible[1])
 
         if lam is None:
             lam = 1 / self._data.get_data_shape()[0]
@@ -465,22 +461,44 @@ class _Optimizer(abc.ABC):
             ValueError: If shape of given matrix does not match init_theta.
         """
 
-        if restriction_mask is not None:
-            #check if shape of restriction_mask matches theta
-            if self._data is not None:
-                _theta_shape=self.get_theta_shape()
-
-                if restriction_mask.shape != _theta_shape:
-                    raise ValueError(f"Shape of 'restriction_mask' ({restriction_mask.shape}) did not match shape of log_theta ({_theta_shape}).")
-            
-            #check if shape of restriction_mask matches init_theta
-            if (self._init_theta is not None) and restriction_mask.shape != self._init_theta.shape:
-                raise ValueError(f"Shape of 'restriction_mask' ({restriction_mask.shape}) did not match shape of init_theta ({self._init_theta.shape}).")
-        
-
         self._theta_restriction_mask=restriction_mask
 
+        mat_compatible = self._check_matrix_shape_compatibility()
+        if not mat_compatible[0]:
+            warnings.warn(mat_compatible[1])
+
         return self
+    
+
+    def _check_matrix_shape_compatibility(self) -> tuple[bool, str]:
+        """
+        Checks whether log_theta, init_theta and theta_restriction_mask have compatible shapes.
+
+        Returns:
+            is_compatible, msg: Tuple of bool telling whether matrices are compatible and message describing potential issues.
+        """
+
+        DESC, OBJ, SHAPE = 0, 1, 2
+        matrix_getters=[
+            ("log_theta",               self._data,                     lambda: self.get_theta_shape()),
+            ("init_theta",              self._init_theta,               lambda: self._init_theta.shape),
+            ("theta_restriction_mask",  self._theta_restriction_mask,   lambda: self._theta_restriction_mask.shape)
+        ]
+        matrix_getters=[mg for mg in matrix_getters if mg[OBJ] is not None]
+        matrix_shapes = [mg[SHAPE]() for mg in matrix_getters]
+
+        if len(matrix_shapes) == 0:
+            return (True, "No matrices have been initialized yet.")
+        
+        if all(shp == matrix_shapes[0] for shp in matrix_shapes):
+            return (True, f"All given matrices have the same shape ({matrix_shapes[0]})")
+        
+        error_msg = "Incompatible matrix shapes:"
+        for mg, shp in zip(matrix_getters, matrix_shapes):
+            error_msg += f" {mg[DESC]}: {shp}; "
+
+        return (False, error_msg)
+
 
 
 
@@ -517,15 +535,9 @@ class cMHNOptimizer(_Optimizer):
         self._data = StateContainer(data_matrix)
         self._bin_datamatrix = data_matrix
 
-        #check if loaded data fits shape of init_theta
-        _theta_shape=self.get_theta_shape()
-        if (self._init_theta is not None) and self._init_theta.shape !=_theta_shape:
-            raise ValueError(f"Shape of log_theta derived from loaded data ({_theta_shape}) did not match shape of init_theta ({self._init_theta.shape}).")
-            
-        #check if loaded data fits shape of theta_restriction_mask
-        if (self._theta_restriction_mask is not None) and self._theta_restriction_mask.shape !=_theta_shape:
-            raise ValueError(f"Shape of log_theta derived from loaded data ({_theta_shape}) did not match shape of theta_restriction_mask ({self._theta_restriction_mask.shape}).")
-        
+        mat_compatible = self._check_matrix_shape_compatibility()
+        if not mat_compatible[0]:
+            warnings.warn(mat_compatible[1] + " (shape of log_theta is derived from loaded data)")
         
         return self
 
