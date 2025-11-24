@@ -99,8 +99,7 @@ class _Optimizer(abc.ABC):
             _Optimizer: The optimizer instance.
 
         Raises:
-            ValueError: If shape of given matrix does not match log_theta.
-            ValueError: If shape of given matrix does not match theta_restriction_mask.
+            UserWarning: If shape of given matrix does not match log_theta or theta_restriction_mask.
         """
 
         self._init_theta = init
@@ -234,6 +233,7 @@ class _Optimizer(abc.ABC):
 
         Raises:
             ValueError: If no data has been loaded.
+            ValueError: If log_theta, init_theta or theta_restriction_mask don't have matching shapes.
         """
         if self._data is None:
             raise ValueError("You have to load data before training!")
@@ -457,8 +457,7 @@ class _Optimizer(abc.ABC):
             _Optimizer: The optimizer instance.
 
         Raises:
-            ValueError: If shape of given matrix does not match log_theta.
-            ValueError: If shape of given matrix does not match init_theta.
+            UserWarning: If shape of given matrix does not match log_theta or init_theta.
         """
 
         self._theta_restriction_mask=restriction_mask
@@ -475,7 +474,7 @@ class _Optimizer(abc.ABC):
         Checks whether log_theta, init_theta and theta_restriction_mask have compatible shapes.
 
         Returns:
-            is_compatible, msg: Tuple of bool telling whether matrices are compatible and message describing potential issues.
+            (bool, str): Tuple of bool telling whether matrices are compatible and message describing potential issues.
         """
 
         DESC, OBJ, SHAPE = 0, 1, 2
@@ -523,8 +522,7 @@ class cMHNOptimizer(_Optimizer):
             cMHNOptimizer: This optimizer object.
 
         Raises:
-            ValueError: If shape of log_theta derived from loaded data does not match init_theta.
-            ValueError: If shape of log_theta derived from loaded data does not match theta_restriction_mask.
+            UserWarning: If shape of log_theta derived from loaded data does not match init_theta or theta_restriction_mask.
         """
         if isinstance(data_matrix, pd.DataFrame):
             self._events = data_matrix.columns.to_list()
@@ -599,6 +597,10 @@ class cMHNOptimizer(_Optimizer):
         if self._bin_datamatrix is None:
             raise ValueError(
                 "You have to load data before you start cross-validation")
+        
+        mat_compatible = self._check_matrix_shape_compatibility()
+        if not mat_compatible[0]:
+            raise ValueError(mat_compatible[1])
 
         if lambda_min is None and lambda_max is not None or lambda_min is not None and lambda_max is None:
             raise ValueError("You have to set both lambda_min and lambda_max, if you want to use them.")
@@ -720,6 +722,22 @@ class cMHNOptimizer(_Optimizer):
             }[device]
         return self
 
+    def get_default_init_theta(self) -> np.ndarray:
+        """
+        Returns the cMHN's independence model (based on loaded data), which is used as the initialization of log_theta by default.
+
+        Returns:
+            np.ndarray: The matrix used as the default initialization of log_theta.
+
+        Raises:
+            ValueError: If no data has been loaded.
+        """
+
+        if self._data is None:
+            raise ValueError("No data has been loaded. Cannot compute independence model")
+
+        return create_indep_model(self._data)
+
     @property
     def training_data(self) -> np.ndarray:
         """
@@ -763,6 +781,27 @@ class oMHNOptimizer(cMHNOptimizer):
         
         n = self._data.get_data_shape()[1]
         return (n+1, n)
+    
+    def get_default_init_theta(self) -> np.ndarray:
+        """
+        Returns the oMHN's independence model (based on loaded data), which is used as the initialization of log_theta by default.
+
+        Returns:
+            np.ndarray: The matrix used as the default initialization of log_theta.
+
+        Raises:
+            ValueError: If no data has been loaded.
+        """
+
+        if self._data is None:
+            raise ValueError("No data has been loaded. Cannot compute independence model")
+
+        vanilla_theta = create_indep_model(self._data)
+        n = vanilla_theta.shape[0]
+        omega_theta = np.zeros((n + 1, n))
+        omega_theta[:n] = vanilla_theta
+
+        return omega_theta
 
     def train(self, lam: float = None, maxit: int = 5000, trace: bool = False,
               reltol: float = 1e-7, round_result: bool = True) -> model.oMHN:
