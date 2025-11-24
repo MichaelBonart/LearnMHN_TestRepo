@@ -118,6 +118,25 @@ class TestcMHNOptimizer(BaseOptimizerTestClass.TestOptimizer):
         # test reproducibility
         self.assertEqual(best_lambda, best_lambda2)
 
+
+    def test_restriction_masking(self):
+        """
+        Test if restricted entries remain unchanged during training.
+        """
+        n = BaseOptimizerTestClass.TestOptimizer.DEFAULT_NUMBER_OF_EVENTS
+
+        random_init = np.random.random((n, n))
+        self.opt.set_init_theta(random_init)
+        dummy_mask = np.ones((n,n))
+        dummy_mask[2,:] = 0
+        dummy_mask[:,1] = 0
+        np.fill_diagonal(dummy_mask, 1)
+        self.opt.set_restriction(dummy_mask)
+        self.opt.train()
+
+        # test if init_theta and resulting theta are equal for restricted entries (where dummy_mask!=1)
+        self.assertEqual((dummy_mask-1)*random_init, (dummy_mask-1)*self.opt.result)
+
     @staticmethod
     def _get_random_model(event_num: int) -> np.ndarray:
         """
