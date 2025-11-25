@@ -123,11 +123,11 @@ class TestcMHNOptimizer(BaseOptimizerTestClass.TestOptimizer):
         """
         Test if restricted entries remain unchanged during training.
         """
-        n = BaseOptimizerTestClass.TestOptimizer.DEFAULT_NUMBER_OF_EVENTS
 
-        random_init = np.random.random((n, n))
+        shp=self.opt.get_theta_shape()
+        random_init = np.random.random(shp).round(2)
         self.opt.set_init_theta(random_init)
-        dummy_mask = np.ones((n,n))
+        dummy_mask = np.ones(shp)
         dummy_mask[2,:] = 0
         dummy_mask[:,1] = 0
         np.fill_diagonal(dummy_mask, 1)
@@ -135,7 +135,7 @@ class TestcMHNOptimizer(BaseOptimizerTestClass.TestOptimizer):
         self.opt.train()
 
         # test if init_theta and resulting theta are equal for restricted entries (where dummy_mask!=1)
-        self.assertEqual((dummy_mask-1)*random_init, (dummy_mask-1)*self.opt.result)
+        np.testing.assert_array_equal((dummy_mask-1)*random_init, (dummy_mask-1)*self.opt.result.log_theta)
 
     @staticmethod
     def _get_random_model(event_num: int) -> np.ndarray:
@@ -162,6 +162,24 @@ class TestoMHNOptimizer(TestcMHNOptimizer):
         self.opt.set_init_theta(random_init)
         self.opt.train(maxit=2)
         np.testing.assert_array_equal(random_init, self.opt._init_theta)
+
+    def test_restriction_masking(self):
+        """
+        Test if restricted entries remain unchanged during training.
+        """
+
+        shp=self.opt.get_theta_shape()
+        random_init = np.random.random(shp).round(2)
+        self.opt.set_init_theta(random_init)
+        dummy_mask = np.ones(shp)
+        dummy_mask[2,:] = 0
+        dummy_mask[:,1] = 0
+        np.fill_diagonal(dummy_mask, 1)
+        self.opt.set_restriction(dummy_mask)
+        self.opt.train()
+
+        # test if init_theta and resulting theta are equal for restricted entries (where dummy_mask!=1)
+        np.testing.assert_array_equal((dummy_mask-1)*random_init, (dummy_mask-1)*self.opt.result.log_theta)
 
     @staticmethod
     def _get_random_model(event_num: int) -> np.ndarray:
