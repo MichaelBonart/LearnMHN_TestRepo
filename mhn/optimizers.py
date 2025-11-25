@@ -151,7 +151,7 @@ class _Optimizer(abc.ABC):
             ValueError: If no data has been loaded.
 
         Returns:
-            shape: The shape of resulting theta as a tuple of integers.
+            (int, int): The shape of theta as a tuple of integers.
         """
 
         if self._data is None:
@@ -734,7 +734,7 @@ class cMHNOptimizer(_Optimizer):
         """
 
         if self._data is None:
-            raise ValueError("No data has been loaded. Cannot compute independence model")
+            raise ValueError("No data has been loaded. Cannot compute independence model.")
 
         return create_indep_model(self._data)
 
@@ -773,7 +773,7 @@ class oMHNOptimizer(cMHNOptimizer):
             ValueError: If no data has been loaded.
 
         Returns:
-            shape: The shape of resulting theta as a tuple of integers.
+            (int, int): The shape of theta as a tuple of integers.
         """
 
         if self._data is None:
@@ -794,7 +794,7 @@ class oMHNOptimizer(cMHNOptimizer):
         """
 
         if self._data is None:
-            raise ValueError("No data has been loaded. Cannot compute independence model")
+            raise ValueError("No data has been loaded. Cannot compute independence model.")
 
         vanilla_theta = create_indep_model(self._data)
         n = vanilla_theta.shape[0]
