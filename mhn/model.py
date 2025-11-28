@@ -689,7 +689,7 @@ class cMHN:
                         va="center",
                         fontsize=16,
                         color='grey',
-                        fontweight='light'
+                        fontweight='normal'
                     )
 
             for i in range(dim_theta_0):
@@ -705,7 +705,8 @@ class cMHN:
                             va="center",
                             fontsize=16,
                             color='grey',
-                            fontweight='light'
+                            fontweight='normal' if (annot is True or np.abs(self.log_theta[i, j]) >= annot) else 'light'
+
                         )
 
         # add colorbars
