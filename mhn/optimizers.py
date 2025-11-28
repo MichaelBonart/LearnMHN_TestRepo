@@ -261,17 +261,14 @@ class _Optimizer(abc.ABC):
         #impose restrictions if present
         if self._theta_restriction_mask is not None:
 
-            #redefine score and gradient function to incorporate restriction mask
+            #redefine gradient function to incorporate restriction mask
             def func_restriction(_score_func, _gradient_func, _mask):
                 mask_flattened= _mask.flatten()
-
-                def restricted_score_func(theta: np.ndarray, states: StateContainer, lam: float, n: int, score_grad_container: list) -> float:
-                    return _score_func(theta*mask_flattened, states, lam, n, score_grad_container)
                 
                 def restricted_gradient_func(theta: np.ndarray, states: StateContainer, lam: float, n: int, score_grad_container: list) -> np.ndarray:
                     return mask_flattened*_gradient_func(theta, states,lam,n,score_grad_container)
                 
-                return restricted_score_func, restricted_gradient_func
+                return _score_func, restricted_gradient_func
 
             score_func, gradient_func = func_restriction(score_func, gradient_func, self._theta_restriction_mask)
 
