@@ -572,8 +572,12 @@ cpdef cpu_gradient_and_score(double[:, :] theta, StateContainer mutation_data):
     for i in range(data_size):
         # for each sample/patient in mutation_data,
         # compute the gradient and score for the sample and add them to the total gradient and total score
-        score += restricted_gradient_and_score(theta, &mutation_data.states[i], local_gradient_container)
-        final_gradient += local_gradient_container
+        # for identical samples computation is done only once and then weighted by their repetiton count
+        sample_repetition = mutation_data.repetition_descriptor[i]
+        if sample_repetition == 0: continue
+
+        score += restricted_gradient_and_score(theta, &mutation_data.states[i], local_gradient_container) * sample_repetition
+        final_gradient += local_gradient_container * sample_repetition
 
     # return the normalized gradient and normalized score
     return (final_gradient / data_size), (score / data_size)
