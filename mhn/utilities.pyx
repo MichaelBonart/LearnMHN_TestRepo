@@ -89,7 +89,7 @@ def sample_artificial_data(np.ndarray[np.double_t, ndim=2] theta, int sample_num
 
 @cython.wraparound(False)
 @cython.boundscheck(False)
-def gillespie(np.ndarray[np.double_t, ndim=2] theta, np.ndarray[np.int32_t, ndim=1] initial_state, int sample_num, bint return_event_times) -> tuple[list[list[int]], np.ndarray]:
+def gillespie(np.ndarray[np.double_t, ndim=2] theta, np.ndarray[np.int32_t, ndim=1] initial_state, int sample_num, bint return_event_times) -> tuple[list[list[int]], np.ndarray | list[list[float]]]:
     """
     Simulates event accumulation using the Gillespie algorithm.
 
@@ -101,9 +101,9 @@ def gillespie(np.ndarray[np.double_t, ndim=2] theta, np.ndarray[np.int32_t, ndim
         return_event_times (bint): If True, returns the times at which all events occurred.
 
     Returns:
-        tuple[list[list[int]], np.ndarray]: A tuple containing:
+        tuple[list[list[int]], np.ndarray | list[list[float]]]: A tuple containing:
             - A list of lists where each inner list contains active events in chronological order.
-            - A numpy array of either observation times or, if return_event_times is True, the times at which all events occurred.
+            - Either a numpy array of observation times or, if return_event_times is True, a list of lists of timepoints at which the events occurred for every sample.
 
     Raises:
         ValueError: If the size of theta is neither (n, n) nor (n+1, n).
@@ -197,7 +197,8 @@ def gillespie(np.ndarray[np.double_t, ndim=2] theta, np.ndarray[np.int32_t, ndim
                 if return_event_times:
                     times.append(current_time)
                     times_list.append(times)
-                observation_times[sample_index] = current_time
+                else:
+                    observation_times[sample_index] = current_time
                 break
 
     return (trajectory_list, observation_times) if not return_event_times else (trajectory_list, times_list)
@@ -271,7 +272,6 @@ def gillespie_timed(np.ndarray[np.double_t, ndim=2] theta, np.ndarray[np.int32_t
                 # if no rates are left, we stop the simulation
                 trajectory_list.append(trajectory)
                 if return_times:
-                    times.append(obs_time)
                     times_list.append(times)
                 break
 
@@ -282,7 +282,6 @@ def gillespie_timed(np.ndarray[np.double_t, ndim=2] theta, np.ndarray[np.int32_t
                 # if we reached the observation time, we stop the simulation
                 trajectory_list.append(trajectory)
                 if return_times:
-                    times.append(obs_time)
                     times_list.append(times)
                 break
 
