@@ -21,6 +21,7 @@ cdef class StateContainer:
     cdef int data_size
     cdef int gene_num
     cdef int max_mutation_num
+    cdef int *repetition_descriptor
 
 
 cdef class StateAgeContainer(StateContainer):

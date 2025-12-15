@@ -78,7 +78,7 @@ cdef void sort_by_age(State *states, double *ages, int state_num):
             break
 
 
-cdef void construct_repetition_descriptor(int[:,:] mutation_data):
+cdef void construct_repetition_descriptor(int* repetition_descriptor, int[:,:] mutation_data):
     """
     This function counts the repetitions of each row in mutation_data. 
     The repetition count of each row is stored in the returned array at the index of the row's first occurence in mutation_data.
@@ -86,17 +86,18 @@ cdef void construct_repetition_descriptor(int[:,:] mutation_data):
     """
 
     N=mutation_data.shape[0]
-    repetitions= np.ones(shape=(N))
     for i in range(0,N):
-        if repetitions[i] == 0:
+        repetition_descriptor[i] = 1
+
+    for i in range(0,N):
+        if repetition_descriptor[i] == 0:
             continue
         
         for j in range(i+1, N):
             if np.array_equal(mutation_data[i,:], mutation_data[j,:]):
-                repetitions[i] += 1
-                repetitions[j] = 0
+                repetition_descriptor[i] += 1
+                repetition_descriptor[j] = 0
 
-    return repetitions
 
 
 cdef class StateContainer:
@@ -131,7 +132,13 @@ cdef class StateContainer:
 
         fill_states(self.states, mutation_data)
 
-        self.repetition_descriptor = construct_repetition_descriptor(mutation_data)
+
+        self.repetition_descriptor = <int *> malloc(self.data_size * sizeof(int))
+
+        if not self.repetition_descriptor:
+            raise MemoryError()
+
+        construct_repetition_descriptor(self.repetition_descriptor, mutation_data)
 
 
     def get_data_shape(self):
@@ -148,8 +155,20 @@ cdef class StateContainer:
         """
         return self.max_mutation_num
 
+    def get_repetition_descriptor(self):
+        """
+        Returns:
+            Array describing repetitions of samples in samples .
+        """
+        python_array=[]
+        for i in range(self.data_size):
+            python_array.append( self.repetition_descriptor[i] )
+
+        return python_array
+
     def __dealloc__(self):
         free(self.states)
+        free(self.repetition_descriptor)
 
 
 cdef class StateAgeContainer(StateContainer):
