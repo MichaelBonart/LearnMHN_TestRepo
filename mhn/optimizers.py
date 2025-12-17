@@ -87,12 +87,12 @@ class _Optimizer(abc.ABC):
 
         self._OutputMHNClass = model.cMHN
 
-    def set_init_theta(self, init: np.ndarray | None) -> _Optimizer:
+    def set_init_theta(self, init: np.ndarray | pd.DataFrame | None) -> _Optimizer:
         """
         Sets the initial theta matrix for learning a new MHN.
 
         Args:
-            init (np.ndarray | None): Initial theta matrix in logarithmic form. If None, uses an independence model where the baseline hazard Theta_ii
+            init (np.ndarray | pd.DataFrame | None): Initial theta matrix in logarithmic form. If None, uses an independence model where the baseline hazard Theta_ii
                                       of each event is set to its empirical odds and the hazard ratios (off-diagonal entries) are set to exactly 1.
 
         Returns:
@@ -101,6 +101,9 @@ class _Optimizer(abc.ABC):
         Raises:
             UserWarning: If shape of given matrix does not match log_theta or theta_restriction_mask.
         """
+
+        if isinstance(init, pd.DataFrame):
+            init = np.array(init, dtype=np.float64)
 
         self._init_theta = init
 
@@ -438,14 +441,14 @@ class _Optimizer(abc.ABC):
     
     def set_restriction(
         self,    
-        restriction_mask:np.ndarray | None = None):
+        restriction_mask: np.ndarray | pd.DataFrame | None = None):
         """
         Sets a restriction imposed on selected entries of log_theta. Restricted entries of log_theta will not be altered during training.
         Their values are thus given by the '_init_theta' property of the Optimizer class. For a non-default choice of '_init_theta' call set_init_theta().
        
 
         Args:
-            restriction_mask (np.ndarray | pd.Dataframe): Matrix of 0's and 1's determining which entries of log_theta will be restricted.
+            restriction_mask (np.ndarray | pd.Dataframe | None): Matrix of 0's and 1's determining which entries of log_theta will be restricted.
             (0 = log_theta entry will be restricted, 1 = log_theta entry will be altered by training iterations as usual).
             Shape of 'restriction_mask' has to match the shape of log_theta.
             Defaults to None.
@@ -457,7 +460,10 @@ class _Optimizer(abc.ABC):
             UserWarning: If shape of given matrix does not match log_theta or init_theta.
         """
 
-        self._theta_restriction_mask=restriction_mask
+        if isinstance(restriction_mask, pd.DataFrame):
+            restriction_mask = np.array(restriction_mask, dtype=np.int8)
+
+        self._theta_restriction_mask = restriction_mask
 
         mat_compatible = self._check_matrix_shape_compatibility()
         if not mat_compatible[0]:
