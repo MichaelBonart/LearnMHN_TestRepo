@@ -118,19 +118,18 @@ class TestcMHNOptimizer(BaseOptimizerTestClass.TestOptimizer):
         # test reproducibility
         self.assertEqual(best_lambda, best_lambda2)
 
-
     def test_restriction_masking(self):
         """
         Test if restricted entries remain unchanged during training.
         """
 
-        shp=self.opt.get_theta_shape()
-        random_init = np.random.random(shp).round(2)
+        shp = self.opt.get_theta_shape()
+        random_init = self._get_random_model(event_num=self.DEFAULT_NUMBER_OF_EVENTS).round(2)
         self.opt.set_init_theta(random_init)
         dummy_mask = np.ones(shp)
-        dummy_mask[2,:] = 0
-        dummy_mask[:,1] = 0
-        np.fill_diagonal(dummy_mask, 1)
+        dummy_mask[2, :] = 0
+        dummy_mask[:, 1] = 0
+
         self.opt.set_restriction(dummy_mask)
         self.opt.train()
 
@@ -141,13 +140,13 @@ class TestcMHNOptimizer(BaseOptimizerTestClass.TestOptimizer):
         """
         Test if correct warnings and errors are raised, when using incompatible matrix shapes for log_theta, init_theta and theta_restriction_mask
         """
-        shp=self.opt.get_theta_shape()
-        n=shp[1]
+        shp = self.opt.get_theta_shape()
+        n = shp[1]
         random_init = np.random.random(shp).round(2)
         dummy_mask = np.ones(shp)
 
         with self.assertWarns(UserWarning):
-            self.opt.set_init_theta(random_init[:,:n-1]) 
+            self.opt.set_init_theta(random_init[:, :n-1])
         with self.assertRaises(ValueError):
             self.opt.train()
 
@@ -155,14 +154,14 @@ class TestcMHNOptimizer(BaseOptimizerTestClass.TestOptimizer):
         self.opt.train()
 
         with self.assertWarns(UserWarning):
-            self.opt.set_restriction(dummy_mask[:n-1,:])
+            self.opt.set_restriction(dummy_mask[:n-1, :])
         with self.assertRaises(ValueError):
             self.opt.train()
 
         self.opt.set_restriction(dummy_mask)
         self.opt.train()
 
-        #change to setting with n-1 columns in datamatrix
+        # change to setting with n-1 columns in datamatrix
         diff_data = np.random.choice([0, 1], (200, n-1))
         with self.assertWarns(UserWarning):
             self.opt.load_data_matrix(diff_data)
@@ -170,13 +169,13 @@ class TestcMHNOptimizer(BaseOptimizerTestClass.TestOptimizer):
             self.opt.train()
 
         with self.assertWarns(UserWarning):
-            self.opt.set_init_theta(random_init[:n-1,:n-1])
+            self.opt.set_init_theta(random_init[:n-1, :n-1])
         with self.assertRaises(ValueError):
             self.opt.train()
 
-        self.opt.set_restriction(dummy_mask[:n-1,:n-1])
+        self.opt.set_restriction(dummy_mask[:n-1, :n-1])
         self.opt.train()
-        
+
     @staticmethod
     def _get_random_model(event_num: int) -> np.ndarray:
         """
@@ -208,13 +207,13 @@ class TestoMHNOptimizer(TestcMHNOptimizer):
         Test if restricted entries remain unchanged during training.
         """
 
-        shp=self.opt.get_theta_shape()
-        random_init = np.random.random(shp).round(2)
+        shp = self.opt.get_theta_shape()
+        random_init = self._get_random_model(event_num=self.DEFAULT_NUMBER_OF_EVENTS).round(2)
         self.opt.set_init_theta(random_init)
         dummy_mask = np.ones(shp)
-        dummy_mask[2,:] = 0
-        dummy_mask[:,1] = 0
-        np.fill_diagonal(dummy_mask, 1)
+        dummy_mask[2, :] = 0
+        dummy_mask[:, 1] = 0
+
         self.opt.set_restriction(dummy_mask)
         self.opt.train()
 
@@ -225,13 +224,13 @@ class TestoMHNOptimizer(TestcMHNOptimizer):
         """
         Test if correct warnings and errors are raised, when using incompatible matrix shapes for log_theta, init_theta and theta_restriction_mask
         """
-        shp=self.opt.get_theta_shape()
-        n=shp[1]
+        shp = self.opt.get_theta_shape()
+        n = shp[1]
         random_init = np.random.random(shp).round(2)
         dummy_mask = np.ones(shp)
 
         with self.assertWarns(UserWarning):
-            self.opt.set_init_theta(random_init[:,:n-1]) 
+            self.opt.set_init_theta(random_init[:, :n-1])
         with self.assertRaises(ValueError):
             self.opt.train()
 
@@ -239,14 +238,14 @@ class TestoMHNOptimizer(TestcMHNOptimizer):
         self.opt.train()
 
         with self.assertWarns(UserWarning):
-            self.opt.set_restriction(dummy_mask[:n-1,:])
+            self.opt.set_restriction(dummy_mask[:n-1, :])
         with self.assertRaises(ValueError):
             self.opt.train()
 
         self.opt.set_restriction(dummy_mask)
         self.opt.train()
 
-        #change to setting with n-1 columns in datamatrix
+        # change to setting with n-1 columns in datamatrix
         diff_data = np.random.choice([0, 1], (200, n-1))
         with self.assertWarns(UserWarning):
             self.opt.load_data_matrix(diff_data)
@@ -254,13 +253,13 @@ class TestoMHNOptimizer(TestcMHNOptimizer):
             self.opt.train()
 
         with self.assertWarns(UserWarning):
-            self.opt.set_init_theta(random_init[:n,:n-1])
+            self.opt.set_init_theta(random_init[:n, :n-1])
         with self.assertRaises(ValueError):
             self.opt.train()
 
-        self.opt.set_restriction(dummy_mask[:n,:n-1])
+        self.opt.set_restriction(dummy_mask[:n, :n-1])
         self.opt.train()
-        
+
     @staticmethod
     def _get_random_model(event_num: int) -> np.ndarray:
         """

@@ -351,9 +351,9 @@ class cMHN:
                     # numerator in Gotovos formula
                     num = np.exp(log_theta[e, state_events].sum())
                     pre_st = st - (1 << e)
-                    A_new[st][j * _m : (j + 1) * _m] = num * A[pre_st]
-                    B_new[st][j * _m : (j + 1) * _m, :-1] = B[pre_st]
-                    B_new[st][j * _m : (j + 1) * _m, -1] = e
+                    A_new[st][j * _m: (j + 1) * _m] = num * A[pre_st]
+                    B_new[st][j * _m: (j + 1) * _m, :-1] = B[pre_st]
+                    B_new[st][j * _m: (j + 1) * _m, -1] = e
                 sorting = A_new[st].argsort()[::-1][:m]
                 A_new[st] = A_new[st][sorting]
                 B_new[st] = B_new[st][sorting]
@@ -502,7 +502,7 @@ class cMHN:
         cmap_brs: Union[str, matplotlib.colors.Colormap] = "Greens",
         colorbar: bool = True,
         annot: Union[float, bool] = 0.1,
-        overlay_restriction_mask : bool = True,
+        overlay_restriction_mask: bool = True,
         ax: Optional[np.arraymatplotlib.axes.Axes] = None,
         logarithmic: bool = True,
     ) -> (
@@ -677,10 +677,10 @@ class cMHN:
 
         # add overlay of theta restriction
         if overlay_restriction_mask and (self.meta is not None) and (self.meta['mask'] is not None):
-            restriction_mask : np.ndarray = self.meta['mask']
+            restriction_mask: np.ndarray = self.meta['mask']
 
             for i in range(dim_theta_1):
-                if restriction_mask[i,i] == 0:
+                if restriction_mask[i, i] == 0:
                     _ = ax_brs.text(
                         0,
                         i,
@@ -695,7 +695,7 @@ class cMHN:
             for i in range(dim_theta_0):
                 for j in range(dim_theta_1):
                     if not i == j and (
-                        restriction_mask[i,j] == 0
+                        restriction_mask[i, j] == 0
                     ):
                         _ = ax_theta.text(
                             j,
