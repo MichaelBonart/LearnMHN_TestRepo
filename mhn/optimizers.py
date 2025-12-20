@@ -219,6 +219,14 @@ class _Optimizer(abc.ABC):
             with open(filename, 'wb') as f:
                 np.save(f, theta)
 
+    def __restrict_gradient_func(self, _gradient_func):
+        mask_flattened = self._theta_restriction_mask.flatten()
+
+        def restricted_gradient_func(theta, states, lam, n, score_grad_container):
+            return mask_flattened*_gradient_func(theta, states, lam, n, score_grad_container)
+
+        return restricted_gradient_func
+
     def train(self, lam: float = None, maxit: int = 5000, trace: bool = False,
               reltol: float = 1e-7, round_result: bool = True) -> model.cMHN:
         """
@@ -261,19 +269,8 @@ class _Optimizer(abc.ABC):
         gradient_func = self._regularized_gradient_func_builder(
             self._gradient_and_score_func)
 
-        # impose restrictions if present
         if self._theta_restriction_mask is not None:
-
-            # redefine gradient function to incorporate restriction mask
-            def func_restriction(_score_func, _gradient_func, _mask):
-                mask_flattened = _mask.flatten()
-
-                def restricted_gradient_func(theta: np.ndarray, states: StateContainer, lam: float, n: int, score_grad_container: list) -> np.ndarray:
-                    return mask_flattened*_gradient_func(theta, states, lam, n, score_grad_container)
-
-                return _score_func, restricted_gradient_func
-
-            score_func, gradient_func = func_restriction(score_func, gradient_func, self._theta_restriction_mask)
+            gradient_func = self.__restrict_gradient_func(gradient_func)
 
         result = reg_optim.learn_mhn(self._data, score_func, gradient_func, self._init_theta, lam, maxit, trace, reltol,
                                      round_result, callback_func)
