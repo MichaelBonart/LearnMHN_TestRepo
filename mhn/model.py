@@ -529,7 +529,8 @@ class cMHN:
                 annotations for all effects greater than this threshold in the logarithmic theta matrix.
                 Defaults to 0.1.
             overlay_restriction_mask (bool, optional):
-                If set to True, restriction mask will be overlayed on plot of theta. Depicts restricted entries of theta with 'X'.
+                If set to True, restriction mask will be overlayed on plot of theta.
+                Restricted entries of theta are depicted by a hatch pattern with diagonal stripes.
                 Defaults to True.
             ax (Optional[matplotlib.axes.Axes], optional):
                 Matplotlib axes to plot on. Defaults to None.
@@ -641,6 +642,21 @@ class cMHN:
 
         ax_theta.set_ylim((dim_theta_0 - 0.5, -0.5))
 
+        # add overlay of theta restriction mask
+        if (overlay_restriction_mask
+                and self.meta is not None
+                and self.meta['mask'] is not None):
+
+            restriction_mask: np.ndarray = self.meta['mask'].copy()
+            plotting_mask_br = np.ma.masked_less(-np.diag(restriction_mask).reshape(-1, 1), 0)
+            np.fill_diagonal(restriction_mask, 1)
+            plotting_mask_theta = np.ma.masked_less(-restriction_mask, 0)
+            none_map = colors.ListedColormap(['none'])
+            ax_theta.pcolor(np.arange(0, dim_theta_1), np.arange(0, dim_theta_0),
+                            plotting_mask_theta, cmap=none_map, hatch='///', edgecolor='0.7')
+            ax_brs.pcolor([-0.5, 0.5], np.arange(0, dim_theta_0)-0.5,
+                          plotting_mask_br, cmap=none_map, hatch='///', edgecolor='0.7')
+
         # add annotations
         if annot:
             for i in range(dim_theta_1):
@@ -673,40 +689,6 @@ class cMHN:
                             ha="center",
                             va="center",
                             fontsize=8,
-                        )
-
-        # add overlay of theta restriction
-        if overlay_restriction_mask and (self.meta is not None) and (self.meta['mask'] is not None):
-            restriction_mask: np.ndarray = self.meta['mask']
-
-            for i in range(dim_theta_1):
-                if restriction_mask[i, i] == 0:
-                    _ = ax_brs.text(
-                        0,
-                        i,
-                        u"\u2A2F",
-                        ha="center",
-                        va="center",
-                        fontsize=16,
-                        color='grey',
-                        fontweight='normal'
-                    )
-
-            for i in range(dim_theta_0):
-                for j in range(dim_theta_1):
-                    if not i == j and (
-                        restriction_mask[i, j] == 0
-                    ):
-                        _ = ax_theta.text(
-                            j,
-                            i,
-                            u"\u2A2F",
-                            ha="center",
-                            va="center",
-                            fontsize=16,
-                            color='grey',
-                            fontweight='normal' if (annot is True or np.abs(self.log_theta[i, j]) >= annot) else 'light'
-
                         )
 
         # add colorbars
