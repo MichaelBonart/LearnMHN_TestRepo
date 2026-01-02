@@ -163,6 +163,22 @@ class _Optimizer(abc.ABC):
         n = self._data.get_data_shape()[1]
         return (n, n)
 
+    def get_default_init_theta(self) -> np.ndarray:
+        """
+        Gets the cMHN's independence model (based on loaded data), which is used as the initialization of log_theta by default.
+
+        Returns:
+            np.ndarray: The matrix used as the default initialization of log_theta.
+
+        Raises:
+            ValueError: If no data has been loaded.
+        """
+
+        if self._data is None:
+            raise ValueError("No data has been loaded. Cannot compute independence model.")
+
+        return create_indep_model(self._data)
+
     def set_callback_func(self, callback=None) -> _Optimizer:
         """
         Sets a callback function to be invoked after each iteration of the BFGS algorithm.
@@ -269,10 +285,14 @@ class _Optimizer(abc.ABC):
         gradient_func = self._regularized_gradient_func_builder(
             self._gradient_and_score_func)
 
+        _init_theta = self._init_theta
+        if _init_theta is None:
+            _init_theta = self.get_default_init_theta()
+
         if self._theta_restriction_mask is not None:
             gradient_func = self.__restrict_gradient_func(gradient_func)
 
-        result = reg_optim.learn_mhn(self._data, score_func, gradient_func, self._init_theta, lam, maxit, trace, reltol,
+        result = reg_optim.learn_mhn(self._data, score_func, gradient_func, _init_theta, lam, maxit, trace, reltol,
                                      round_result, callback_func)
 
         self.__backup_current_step = None
@@ -720,22 +740,6 @@ class cMHNOptimizer(_Optimizer):
             }[device]
         return self
 
-    def get_default_init_theta(self) -> np.ndarray:
-        """
-        Returns the cMHN's independence model (based on loaded data), which is used as the initialization of log_theta by default.
-
-        Returns:
-            np.ndarray: The matrix used as the default initialization of log_theta.
-
-        Raises:
-            ValueError: If no data has been loaded.
-        """
-
-        if self._data is None:
-            raise ValueError("No data has been loaded. Cannot compute independence model.")
-
-        return create_indep_model(self._data)
-
     @property
     def training_data(self) -> np.ndarray:
         """
@@ -782,7 +786,7 @@ class oMHNOptimizer(cMHNOptimizer):
 
     def get_default_init_theta(self) -> np.ndarray:
         """
-        Returns the oMHN's independence model (based on loaded data), which is used as the initialization of log_theta by default.
+        Gets the oMHN's default initialization of log_theta (based on loaded data).
 
         Returns:
             np.ndarray: The matrix used as the default initialization of log_theta.
@@ -822,20 +826,7 @@ class oMHNOptimizer(cMHNOptimizer):
         if self._data is None:
             raise ValueError("You have to load data before training!")
 
-        undo_init_theta = False
-        if self._init_theta is None:
-            undo_init_theta = True
-            vanilla_theta = create_indep_model(self._data)
-            n = vanilla_theta.shape[0]
-            omega_theta = np.zeros((n + 1, n))
-            omega_theta[:n] = vanilla_theta
-            self._init_theta = omega_theta
-
         super().train(lam, maxit, trace, reltol, round_result)
-
-        if undo_init_theta:
-            self._init_theta = None
-            self._result.meta["init"] = None
 
         return self.result
 
