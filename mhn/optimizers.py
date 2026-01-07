@@ -473,14 +473,14 @@ class _Optimizer(abc.ABC):
         Raises:
             ValueError: If given mask contains values other than 0 or 1.
             UserWarning: If shape of given mask does not match log_theta or init_theta.
-            UserWarning: If given mask restricts all/no entries of log_theta.
+            UserWarning: If given mask restricts all entries of log_theta.
         """
 
         mask_vals = np.unique(restriction_mask) if restriction_mask is not None else []
         if not set(mask_vals) <= {0, 1}:
             raise ValueError(f"Theta restriction mask must contain 0's and 1's only. (contained {set(mask_vals)})")
-        elif len(mask_vals) == 1:
-            warnings.warn(f"Given mask restricts {'all' if mask_vals[0]==0 else 'no'} entries of log_theta.")
+        elif len(mask_vals) == 1 and mask_vals[0] == 0:
+            warnings.warn(f"Given mask restricts all entries of log_theta.")
 
         if isinstance(restriction_mask, pd.DataFrame):
             restriction_mask = np.array(restriction_mask, dtype=np.int8)
