@@ -118,6 +118,23 @@ class TestcMHNOptimizer(BaseOptimizerTestClass.TestOptimizer):
         # test reproducibility
         self.assertEqual(best_lambda, best_lambda2)
 
+    def test_set_restriction(self):
+        """
+        Test if set_restriction acts as expected
+        """
+        self.opt.set_restriction(None)
+
+        mask = np.ones(self.opt.get_theta_shape())
+        self.opt.set_restriction(mask)
+
+        mask[0, 0] = 2
+        with self.assertRaises(ValueError):
+            self.opt.set_restriction(mask)
+
+        mask[:, :] = 0
+        with self.assertWarns(UserWarning):
+            self.opt.set_restriction(mask)
+
     def test_restriction_masking(self):
         """
         Test if restricted entries remain unchanged during training.
@@ -142,7 +159,7 @@ class TestcMHNOptimizer(BaseOptimizerTestClass.TestOptimizer):
         """
         shp = self.opt.get_theta_shape()
         n = shp[1]
-        random_init = np.random.random(shp).round(2)
+        random_init = self._get_random_model(n).round(2)
         dummy_mask = np.ones(shp)
 
         with self.assertWarns(UserWarning):
@@ -202,6 +219,23 @@ class TestoMHNOptimizer(TestcMHNOptimizer):
         self.opt.train(maxit=2)
         np.testing.assert_array_equal(random_init, self.opt._init_theta)
 
+    def test_set_restriction(self):
+        """
+        Test if set_restriction acts as expected
+        """
+        self.opt.set_restriction(None)
+
+        mask = np.ones(self.opt.get_theta_shape())
+        self.opt.set_restriction(mask)
+
+        mask[0, 0] = 2
+        with self.assertRaises(ValueError):
+            self.opt.set_restriction(mask)
+
+        mask[:, :] = 0
+        with self.assertWarns(UserWarning):
+            self.opt.set_restriction(mask)
+
     def test_restriction_masking(self):
         """
         Test if restricted entries remain unchanged during training.
@@ -226,7 +260,7 @@ class TestoMHNOptimizer(TestcMHNOptimizer):
         """
         shp = self.opt.get_theta_shape()
         n = shp[1]
-        random_init = np.random.random(shp).round(2)
+        random_init = self._get_random_model(n).round(2)
         dummy_mask = np.ones(shp)
 
         with self.assertWarns(UserWarning):
