@@ -165,12 +165,17 @@ class cMHN:
                 )
 
             return trajectory_list, observation_times
-        
+
         else:
 
-            trajectory_list = utilities.gillespie_timed(
+            gillespie_result = utilities.gillespie_timed(
                 self.log_theta, initial_state, trajectory_num, timed, return_event_times
             )
+
+            if return_event_times:
+                trajectory_list, times_list = gillespie_result
+            else:
+                trajectory_list = gillespie_result
 
             if output_event_names:
                 if self.events is None:
@@ -186,8 +191,7 @@ class cMHN:
                     )
                 )
 
-            return trajectory_list
-
+            return (trajectory_list, times_list) if return_event_times else trajectory_list
 
     def compute_marginal_likelihood(self, state: np.ndarray) -> float:
         """
