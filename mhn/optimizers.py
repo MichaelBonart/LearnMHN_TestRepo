@@ -285,12 +285,12 @@ class _Optimizer(abc.ABC):
         gradient_func = self._regularized_gradient_func_builder(
             self._gradient_and_score_func)
 
+        if self._theta_restriction_mask is not None:
+            gradient_func = self.__restrict_gradient_func(gradient_func)
+
         _init_theta = self._init_theta
         if _init_theta is None:
             _init_theta = self.get_default_init_theta()
-
-        if self._theta_restriction_mask is not None:
-            gradient_func = self.__restrict_gradient_func(gradient_func)
 
         result = reg_optim.learn_mhn(self._data, score_func, gradient_func, _init_theta, lam, maxit, trace, reltol,
                                      round_result, callback_func)
