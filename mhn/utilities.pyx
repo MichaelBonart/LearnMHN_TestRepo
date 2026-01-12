@@ -103,7 +103,7 @@ def gillespie(np.ndarray[np.double_t, ndim=2] theta, np.ndarray[np.int32_t, ndim
     Returns:
         tuple[list[list[int]], np.ndarray | list[list[float]]]: A tuple containing:
             - A list of lists where each inner list contains active events in chronological order.
-            - Either a numpy array of observation times or, if return_event_times is True, a list of lists of timepoints at which the events occurred for every sample.
+            - Either a numpy array of observation times or, if return_event_times is True, a list of lists of timepoints at which the events occurred for every sample (occurrence times of events already present in initial_state are declared as None).
 
     Raises:
         ValueError: If the size of theta is neither (n, n) nor (n+1, n).
@@ -141,14 +141,13 @@ def gillespie(np.ndarray[np.double_t, ndim=2] theta, np.ndarray[np.int32_t, ndim
     cdef int initial_sample_length = initial_state.sum()
 
     for sample_index in range(sample_num):
-
-        if return_event_times:
-            times = []
-
         in_current_sample[:] = initial_state.copy()
         current_sample_length = initial_sample_length
         current_time = 0.
         trajectory = [gene for gene in range(n) if initial_state[gene]]
+        if return_event_times:
+            times = [None for gene in trajectory]
+
         while 1:
             sum_rates = 0.
             j = 0
@@ -220,7 +219,7 @@ def gillespie_timed(np.ndarray[np.double_t, ndim=2] theta, np.ndarray[np.int32_t
 
     Returns:
         A list of lists where each inner list contains active events in chronological order.
-        If return_times is True, also returns a list of times at which events occurred.
+        If return_times is True, also returns a list of times at which events occurred (occurrence times of events already present in initial_state are declared as None).
 
     Raises:
         ValueError: If the size of theta is neither (n, n) nor (n+1, n).
@@ -246,12 +245,13 @@ def gillespie_timed(np.ndarray[np.double_t, ndim=2] theta, np.ndarray[np.int32_t
     cdef int initial_sample_length = initial_state.sum()
 
     for _ in range(sample_num):
-        if return_times:
-            times = []
         in_current_sample[:] = initial_state.copy()
         current_sample_length = initial_sample_length
         current_time = 0.
         trajectory = [gene for gene in range(n) if initial_state[gene]]
+        if return_times:
+            times = [None for gene in trajectory]
+
         while 1:
             sum_rates = 0.
             j = 0
