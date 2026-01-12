@@ -118,8 +118,10 @@ class cMHN:
                                                     represents an event being present (1) or not (0), or a list of strings, where each string is the name of
                                                     an event. The later can only be used if events were specified during creation of the cMHN object.
             output_event_names (bool, optional): Whether to return event names instead of indices. Defaults to False.
-            timed (float, optional): If a float is given, only sample trajetories until this (abstract) timepoint (without units). In this case, if return_event_times=False, only the trajectories are returned. May also be np.inf. Defaults to False.
-            return_event_times (bool, optional): If True, returns the observation times of all events in the trajectories instead of only the observation times. Defaults to False.
+            timed (float, optional): If a float is given, only sample trajectories until this (abstract) timepoint (without units). In this case, if return_event_times=False, only the trajectories are returned. May also be np.inf. Defaults to False.
+            return_event_times (bool, optional): If True, returns the accumulation times of all events in the trajectories instead of the observation times.
+                                                    In this case, if timed=False, the observation times are included in the lists of accumulation times as their last entries.
+                                                    Accumulation times of events already present in initial_state are declared as None. Defaults to False.
 
         Returns:
             tuple[list[list[int | str]], np.ndarray]: List of trajectories and, if applicable their observation times or all event's accumulation times.
