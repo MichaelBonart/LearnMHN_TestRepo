@@ -84,7 +84,7 @@ IF NVCC_AVAILABLE:
         int DLL_PREFIX cuda_functional();
         """
 
-        int cuda_gradient_and_score_implementation(double *ptheta, int n, State *mutation_data, int data_size, double *grad_out, double *score_out)
+        int cuda_gradient_and_score_implementation(double *ptheta, int n, State *mutation_data, int data_size, int *repetition_count, double *grad_out, double *score_out)
         void get_error_name_and_description(int error, const char **error_name, const char **error_description)
         int cuda_functional()
 
@@ -691,7 +691,7 @@ cpdef cuda_gradient_and_score(double[:, :] theta, StateContainer mutation_data):
         cdef const char *error_name
         cdef const char *error_description
 
-        error_code = cuda_gradient_and_score_implementation(&theta[0, 0], n, &mutation_data.states[0], data_size, &grad_out[0], &score)
+        error_code = cuda_gradient_and_score_implementation(&theta[0, 0], n, &mutation_data.states[0], &mutation_data.repetition_descriptor[0], data_size, &grad_out[0], &score)
 
         if error_code != 0:
             get_error_name_and_description(error_code, &error_name, &error_description)
@@ -729,6 +729,7 @@ cpdef gradient_and_score(double[:, :] theta, StateContainer mutation_data):
         cdef int data_size = mutation_data.data_size
         cdef int n = theta.shape[0]
         cdef State *sorted_data = <State*> malloc(data_size * sizeof(State));
+        cdef int *sorted_repetition_desc = <int*> malloc(data_size * sizeof(int));
 
         cdef int error_code
         cdef const char *error_name
@@ -752,9 +753,11 @@ cpdef gradient_and_score(double[:, :] theta, StateContainer mutation_data):
             mutation_num = get_mutation_num(&mutation_data.states[i])
             if mutation_num > critical_size:
                 sorted_data[index_right] = mutation_data.states[i]
+                sorted_repetition_desc[index_right] = mutation_data.repetition_descriptor[i]
                 index_right -= 1
             else:
                 sorted_data[index_left] = mutation_data.states[i]
+                sorted_repetition_desc[index_left] = mutation_data.repetition_descriptor[i]
                 index_left += 1
 
         cdef np.ndarray[np.double_t, ndim=2]  final_gradient = np.zeros((n, n), dtype=np.double)
@@ -764,7 +767,8 @@ cpdef gradient_and_score(double[:, :] theta, StateContainer mutation_data):
         if index_right != data_size - 1:
             grad_out = <double *> malloc(n*n * sizeof(double))
             error_code = cuda_gradient_and_score_implementation(&theta[0, 0], n, sorted_data + index_right + 1,
-                                                                data_size - index_left, &grad_out[0], &score)
+                                                                data_size - index_left, sorted_repetition_desc + index_right + 1,
+                                                                 &grad_out[0], &score)
 
             if error_code != 0:
                 get_error_name_and_description(error_code, &error_name, &error_description)
@@ -779,9 +783,13 @@ cpdef gradient_and_score(double[:, :] theta, StateContainer mutation_data):
         cdef np.ndarray[np.double_t, ndim=2]  tmp_gradient = np.zeros((n, n), dtype=np.double)
 
         for i in range(index_left):
+            sample_repetition = sorted_repetition_desc[i]
+            if sample_repetition == 0:
+                continue
+
             state = &sorted_data[i]
-            score += restricted_gradient_and_score(theta, state, tmp_gradient)
-            final_gradient += tmp_gradient
+            score += restricted_gradient_and_score(theta, state, tmp_gradient) * sample_repetition
+            final_gradient += tmp_gradient * sample_repetition
 
         free(sorted_data)
         return final_gradient/data_size, score/data_size
