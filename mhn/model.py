@@ -104,7 +104,7 @@ class cMHN:
     def sample_trajectories(
         self,
         trajectory_num: int,
-        initial_state: np.ndarray | list[str],
+        initial_state: np.ndarray | list[str] | None = None,
         output_event_names: bool = False,
         timed: float | Literal[False] = False,
         return_event_times: bool = False
@@ -114,9 +114,10 @@ class cMHN:
 
         Args:
             trajectory_num (int): Number of trajectories to simulate.
-            initial_state (np.ndarray | list[str]): Starting state for the trajectories. Can be either a numpy array containing 0s and 1s, where each entry
+            initial_state (np.ndarray | list[str], optional): Starting state for the trajectories. Can be either a numpy array containing 0s and 1s, where each entry
                                                     represents an event being present (1) or not (0), or a list of strings, where each string is the name of
                                                     an event. The later can only be used if events were specified during creation of the cMHN object.
+                                                    Can also be None. In this case a vector of zeros is used as initial_state. Defaults to None.
             output_event_names (bool, optional): Whether to return event names instead of indices. Defaults to False.
             timed (float, optional): If a float is given, only sample trajectories until this (abstract) timepoint (without units). In this case, if return_event_times=False, only the trajectories are returned. May also be np.inf. Defaults to False.
             return_event_times (bool, optional): If True, returns the accumulation times of all events in the trajectories instead of the observation times.
@@ -126,6 +127,10 @@ class cMHN:
         Returns:
             tuple[list[list[int | str]], np.ndarray]: List of trajectories and, if applicable their observation times or all event's accumulation times.
         """
+
+        if initial_state is None:
+            initial_state = np.zeros((self.log_theta.shape[1]), dtype=np.int32)
+
         if type(initial_state) is np.ndarray:
             initial_state = initial_state.astype(np.int32)
             if initial_state.size != self.log_theta.shape[1]:
