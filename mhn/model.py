@@ -108,7 +108,13 @@ class cMHN:
         output_event_names: bool = False,
         timed: float | Literal[False] = False,
         return_event_times: bool = False
-    ) -> tuple[list[list[int | str]], np.ndarray] | list[list[int | str]]:
+    ) -> (
+        tuple[
+            list[list[int | str]]
+            | list[list[int | str]], (list[list[float]] | np.ndarray)
+            | list[list[int | str]], list[list[float]], np.ndarray
+        ]
+    ):
         """
         Simulates event accumulation using the Gillespie algorithm. Use np.random.seed() to make results reproducible.
 
@@ -119,13 +125,16 @@ class cMHN:
                                                     an event. The later can only be used if events were specified during creation of the cMHN object.
                                                     Can also be None. In this case a vector of zeros is used as initial_state. Defaults to None.
             output_event_names (bool, optional): Whether to return event names instead of indices. Defaults to False.
-            timed (float, optional): If a float is given, only sample trajectories until this (abstract) timepoint (without units). In this case, if return_event_times=False, only the trajectories are returned. May also be np.inf. Defaults to False.
-            return_event_times (bool, optional): If True, returns the accumulation times of all events in the trajectories instead of the observation times.
-                                                    In this case, if timed=False, the observation times are included in the lists of accumulation times as their last entries.
+            timed (float, optional): If a float is given, only sample trajectories until this (abstract) timepoint (without units). May also be np.inf.
+                                                    If False, sample trajectories until observation event. In this case the observation times are returned as last argument. Defaults to False.
+            return_event_times (bool, optional): If True, returns the accumulation times of all events in the trajectories as second argument.
                                                     Accumulation times of events already present in initial_state are declared as None. Defaults to False.
 
         Returns:
-            tuple[list[list[int | str]], np.ndarray]: List of trajectories and, if applicable their observation times or all event's accumulation times.
+            tuple[list[list[int | str]] | list[list[int | str]], (list[list[float]] | np.ndarray) | list[list[int | str]], list[list[float]], np.ndarray]: A tuple with 1-3 elements containing:
+                                                    - List of all trajectories,
+                                                    - if return_event_times is True, a list of lists of accumulation times for all trajectories' events,
+                                                    - if timed is False, a numpy array of all simulated samples' observation times.
         """
 
         if initial_state is None:
@@ -152,53 +161,29 @@ class cMHN:
                 initial_state[index] = 1
 
         if timed is False:
-
-            trajectory_list, observation_times = utilities.gillespie(
+            gillespie_result = utilities.gillespie(
                 self.log_theta, initial_state, trajectory_num, return_event_times
             )
-
-            if output_event_names:
-                if self.events is None:
-                    raise ValueError(
-                        "output_event_names can only be set to True, if events was set for the cMHN object"
-                    )
-                trajectory_list = list(
-                    map(
-                        lambda trajectory: list(
-                            map(lambda event: self.events[event], trajectory)
-                        ),
-                        trajectory_list,
-                    )
-                )
-
-            return trajectory_list, observation_times
-
         else:
-
             gillespie_result = utilities.gillespie_timed(
                 self.log_theta, initial_state, trajectory_num, timed, return_event_times
             )
 
-            if return_event_times:
-                trajectory_list, times_list = gillespie_result
-            else:
-                trajectory_list = gillespie_result
+        trajectory_list = gillespie_result[0]
 
-            if output_event_names:
-                if self.events is None:
-                    raise ValueError(
-                        "output_event_names can only be set to True, if events was set for the cMHN object"
-                    )
-                trajectory_list = list(
-                    map(
-                        lambda trajectory: list(
-                            map(lambda event: self.events[event], trajectory)
-                        ),
-                        trajectory_list,
-                    )
+        if output_event_names:
+            if self.events is None:
+                raise ValueError(
+                    "output_event_names can only be set to True, if events was set for the cMHN object"
                 )
+            trajectory_list[:] = map(
+                lambda trajectory: list(
+                    map(lambda event_idx: self.events[event_idx], trajectory)
+                ),
+                trajectory_list,
+            )
 
-            return (trajectory_list, times_list) if return_event_times else trajectory_list
+        return gillespie_result
 
     def compute_marginal_likelihood(self, state: np.ndarray) -> float:
         """
