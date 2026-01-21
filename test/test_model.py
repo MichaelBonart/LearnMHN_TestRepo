@@ -127,26 +127,23 @@ class TestMHN(unittest.TestCase):
         for output_event_names in [True, False]:
             with self.subTest(output_event_names=output_event_names):
 
-                trajectories, obs_times = mhn_object.sample_trajectories(
+                trajectories, acc_times, obs_times = mhn_object.sample_trajectories(
                     100, initial_state=initial_state, return_event_times=True,
                     output_event_names=output_event_names)
 
-                for traj, times in zip(trajectories, obs_times):
-                    # including the observation time, the event times
-                    # array should be 1 longer the trajectory array
-                    self.assertEqual(len(traj) + 1, len(times))
+                for traj, times, obs_time in zip(trajectories, acc_times, obs_times):
+                    self.assertEqual(len(traj), len(times))
                     # event times should be strictly increasing
                     for i in range(1, len(times)):
                         self.assertGreater(times[i], times[i-1])
+                    if len(times) > 0:
+                        self.assertGreater(obs_time, times[-1])
 
-                trajectories, obs_times = mhn_object.sample_trajectories(
+                trajectories, acc_times = mhn_object.sample_trajectories(
                     100, initial_state=initial_state, return_event_times=True,
                     timed=1, output_event_names=output_event_names)
 
-                for traj, times in zip(trajectories, obs_times):
-                    # excluding the observation time, the event times
-                    # array should be the same length as the trajectory
-                    # array
+                for traj, times in zip(trajectories, acc_times):
                     self.assertEqual(len(traj), len(times))
                     # event times should be strictly increasing
                     for i in range(1, len(times)):
