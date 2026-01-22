@@ -94,14 +94,14 @@ class MCMC(pints.MCMCController):
 
         n_parallel = 10
 
-        epsilons = 10 ** np.linspace(0, -3, num=n_parallel)
+        epsilons = 10 ** np.linspace(-1, -5, num=n_parallel)
 
         for trial in range(max_trials):
             if verbose:
                 print(f"Trial {trial+1}: epsilons={epsilons}")
 
             temp_controller = pints.MCMCController(
-                self.Posterior,
+                self.posterior,
                 method=pints.MALAMCMC,
                 chains=n_parallel,
                 x0=[sampler._x0 for _, sampler in zip(
@@ -109,7 +109,7 @@ class MCMC(pints.MCMCController):
             )
             temp_controller.set_log_to_screen(False)
             for sampler, epsilon in zip(temp_controller.samplers(), epsilons):
-                sampler.set_epsilon([epsilon] * self.Posterior.n_parameters())
+                sampler.set_epsilon([epsilon] * self.posterior.n_parameters())
             temp_controller.set_max_iterations(n_iter)
             temp_controller.run()
 
