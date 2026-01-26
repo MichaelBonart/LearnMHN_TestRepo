@@ -149,7 +149,14 @@ ext_modules = [
         extra_compile_args=[
             '/Ox' if IS_WINDOWS else '-O2'
         ]
-    )
+    ),
+    Extension(
+        "mhn.full_state_space.fisher",
+        ["./mhn/full_state_space/fisher.pyx"],
+        extra_compile_args=[
+            '/Ox' if IS_WINDOWS else '-O2'
+        ]
+    ),
 ]
 
 # we only want the source code in a source distribution

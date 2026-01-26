@@ -270,17 +270,15 @@ def cuda_compute_inverse(double[:, :] theta, double[:] b, bint transp = False):
 
 def cuda_fisher(double[:, :] theta):
     """
-    Computes the log-likelihood score and its gradient for a given theta and a given empirical distribution.
+    Computes the Fisher information matrix of a cMHN on the GPU.
 
     **This function can only be used if the mhn package was compiled with CUDA.**
 
     Args:
         theta (np.ndarray[np.double_t]): The theta matrix representing the cMHN.
-        pD (np.ndarray[np.double_t]): The probability distribution according to the training data.
 
     Returns:
-        tuple: The gradient and the log-likelihood score.
-
+        np.ndarray[np.double_t]: The Fisher information matrix.
     Raises:
         RuntimeError: If the mhn package was not compiled with CUDA.
     """
