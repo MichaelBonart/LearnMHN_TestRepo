@@ -390,6 +390,21 @@ class _Optimizer(abc.ABC):
 
         return self
 
+    @property
+    def penalty(self):
+        return self._penalty
+
+    def __getstate__(self):
+        state = self.__dict__.copy()
+        state.pop("_data")
+        state.pop("_regularized_score_func_builder")
+        state.pop("_regularized_gradient_func_builder")
+        
+        return state
+    
+    def __setstate__(self, state):
+        self.__dict__.update(state)
+        self._data = StateContainer(state["_bin_datamatrix"])
 
 class cMHNOptimizer(_Optimizer):
     """
@@ -776,7 +791,6 @@ class oMHNOptimizer(cMHNOptimizer):
         self._penalty = (penalty_score, penalty_gradient)
 
         return self
-
 
 class MHNType(Enum):
     """
