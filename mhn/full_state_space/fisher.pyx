@@ -19,8 +19,12 @@ def cython_fisher(
     """
     Computes the fisher information matrix for cMHN.
     The formulas are described in S. Vocht. Identifiability of Mutual Hazard Networks. Unpublished bachelor thesis, 2022
-    : param theta : matrix containing the theta values
-    : returns : the Fisher information matrix for theta
+
+    Args:
+        theta (np.ndarray): matrix containing the theta values
+
+    Returns:
+        np.ndarray: The Fisher information matrix for theta
     """
     cdef int i, j, s, t
     cdef int incx = 1
@@ -139,9 +143,13 @@ def omhn_fisher(
 ) -> np.ndarray:
     """
     Computes the Fisher information matrix for oMHN.
-    :param log_theta: matrix containing the log theta values
-    :param use_cuda: whether to use GPU acceleration
-    :returns: the Fisher information matrix for theta
+    
+    Args:
+        log_theta (np.ndarray): matrix containing the log theta values
+        use_cuda (bool, optional): whether to use GPU acceleration
+    
+    Returns:
+        np.ndarray: The Fisher information matrix for log_theta
     """
 
     n = log_theta.shape[1]
@@ -178,10 +186,14 @@ def fisher(
 ) -> np.ndarray:
     """
     Computes the Fisher information matrix for o/cMHN.
-    :param log_theta: matrix containing the log theta values
-    :param omhn: whether MHN is oMHN or cMHN
-    :param use_cuda: whether to use GPU acceleration
-    :returns: the Fisher information matrix for theta
+    
+    Args:
+        log_theta(np.ndarray): matrix containing the log theta values
+        omhn (bool, optional): whether MHN is oMHN or cMHN
+        use_cuda (bool, optional): whether to use GPU acceleration
+    
+    Returns:
+        np.ndarray: The Fisher information matrix for log_theta
     """
     if omhn:
         return omhn_fisher(log_theta, use_cuda=use_cuda)
