@@ -4,7 +4,8 @@ import collections
 import numpy as np
 import scipy.linalg
 from typing import Callable
-from ..full_state_space.fisher import fisher
+from ..full_state_space.fisher import fisher as get_fisher
+
 
 class Kernel:
     """Base class for kernels used in MCMC sampling."""
@@ -123,7 +124,7 @@ class smMALAKernel(Kernel):
         log_posterior_grad = log_likelihood_grad + \
             self.log_prior_grad(initial_step)
 
-        fisher = fisher(
+        fisher = get_fisher(
             log_theta=initial_step.reshape(self.shape),
             omhn=self.omhn,
             use_cuda=self.use_cuda,

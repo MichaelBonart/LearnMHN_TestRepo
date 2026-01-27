@@ -137,6 +137,13 @@ ext_modules = [
         extra_link_args=extra_cuda_link_args
     ),
     Extension(
+        "mhn.full_state_space.fisher",
+        ["./mhn/full_state_space/fisher.pyx"],
+        extra_compile_args=[
+            '/Ox' if IS_WINDOWS else '-O2'
+        ]
+    ),
+    Extension(
         "mhn.full_state_space.PerformanceCriticalCode",
         ["./mhn/full_state_space/PerformanceCriticalCode.pyx"],
         extra_compile_args=[
@@ -146,13 +153,6 @@ ext_modules = [
     Extension(
         "mhn.full_state_space.ModelConstruction",
         ["./mhn/full_state_space/ModelConstruction.pyx"],
-        extra_compile_args=[
-            '/Ox' if IS_WINDOWS else '-O2'
-        ]
-    ),
-    Extension(
-        "mhn.full_state_space.fisher",
-        ["./mhn/full_state_space/fisher.pyx"],
         extra_compile_args=[
             '/Ox' if IS_WINDOWS else '-O2'
         ]
