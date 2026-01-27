@@ -70,22 +70,22 @@ class MCMC:
 
     @overload
     def __init__(self, *, optimizer: ..., n_chains: ... = ..., epsilon: ... = ...,
-                 kernel_class: MALAKernel | RWMKernel = ..., seed: ... = ...,
-                 ): ...
+                 kernel_class: MALAKernel | RWMKernel = ..., thin: ... = ...,
+                 seed: ... = ...,): ...
 
     @overload
     def __init__(self, *, mhn_model: ..., data: ...,
                  penalty: Penalty | Callable[[np.ndarray], float],
                  n_chains: ... = ..., epsilon: ... = ...,
-                 kernel_class: Literal[RWMKernel] = ..., seed: ... = ...
-                 ): ...
+                 kernel_class: Literal[RWMKernel] = ..., thin: ... = ...,
+                 seed: ... = ...): ...
 
     @overload
     def __init__(self, *, mhn_model: ..., data: ...,
                  log_prior: Callable[[np.ndarray], float],
                  n_chains: ... = ..., epsilon: ... = ...,
-                 kernel_class: Literal[RWMKernel] = ..., seed: ... = ...
-                 ): ...
+                 kernel_class: Literal[RWMKernel] = ..., thin: ... = ...,
+                 seed: ... = ...): ...
 
     @overload
     def __init__(self, *, mhn_model: ..., data: ...,
@@ -93,7 +93,7 @@ class MCMC:
                      Callable[[np.ndarray], float],
                      Callable[[np.ndarray], np.ndarray]],
                  n_chains: ... = ..., epsilon: ... = ...,
-                 kernel_class: Literal[MALAKernel] = ...,
+                 kernel_class: Literal[MALAKernel] = ..., thin: ... = ...,
                  seed: ... = ...): ...
 
     @overload
@@ -102,7 +102,7 @@ class MCMC:
                      Callable[[np.ndarray], float],
                      Callable[[np.ndarray], np.ndarray],],
                  n_chains: ... = ..., epsilon: ... = ...,
-                 kernel_class: Literal[MALAKernel] = ...,
+                 kernel_class: Literal[MALAKernel] = ..., thin: ... = ...,
                  seed: ... = ...): ...
 
     @overload
@@ -112,12 +112,12 @@ class MCMC:
                      Callable[[np.ndarray], np.ndarray],
                      Callable[[np.ndarray], np.ndarray],],
                  n_chains: ... = ..., epsilon: ... = ...,
-                 kernel_class: Literal[smMALAKernel] = ...,
+                 kernel_class: Literal[smMALAKernel] = ..., thin: ... = ...,
                  seed: ... = ...): ...
 
-    def __init__(self, *, optimizer=None, mhn_model=None, data=None, penalty=None,
+    def __init__(self, *, optimizer=None, mhn_model: oMHN | cMHN | None, data=None, penalty=None,
                  log_prior=None, n_chains=10, epsilon="auto",
-                 kernel_class=MALAKernel, seed=0,) -> None:
+                 kernel_class=MALAKernel, thin: int = 1, seed=0,) -> None:
         if optimizer is None:
             if mhn_model is None or data is None:
                 raise ValueError(
@@ -150,16 +150,18 @@ class MCMC:
         penalty = tuple(penalty)
         if len(penalty) < 3:
             penalty = penalty + (None,) * (3 - len(penalty))
+        self._penalty = penalty
 
         if log_prior is None:
             log_prior = (None, None, None)
         log_prior = tuple(log_prior)
         if len(log_prior) < 3:
             log_prior = log_prior + (None,) * (3 - len(log_prior))
+        self._prior = log_prior
 
         # Set log_prior and its derivatives
-        
-        if (log_prior[0] is None + penalty[0] is None) != 1:
+
+        if (log_prior[0] is None) + (penalty[0] is None) != 1:
             raise ValueError(
                 "Provide either penalty or log_prior, but not both."
             )
@@ -167,21 +169,21 @@ class MCMC:
             penalty[0])
 
         if kernel_class in [MALAKernel, smMALAKernel]:
-            if (log_prior[1] is None + penalty[1] is None) != 1:
+            if (log_prior[1] is None) + (penalty[1] is None) != 1:
                 raise ValueError(
                     "Provide either gradient of penalty or gradient of "
                     "log_prior, but not both."
                 )
-            self.log_prior_grad = log_prior[1] or self._set_log_prior_grad(
+            self.log_prior_grad = log_prior[1] or self._get_log_prior_grad(
                 penalty[1])
 
         if kernel_class == smMALAKernel:
-            if (log_prior[2] is None + penalty[2] is None) != 1:
+            if (log_prior[2] is None) + (penalty[2] is None) != 1:
                 raise ValueError(
                     "Provide either Hessian of penalty or Hessian of "
                     "log_prior, but not both."
                 )
-            self.log_prior_hessian = log_prior[2] or self._set_log_prior_hessian(
+            self.log_prior_hessian = log_prior[2] or self._get_log_prior_hessian(
                 penalty[2])
 
         self.optimizer = optimizer
@@ -192,6 +194,7 @@ class MCMC:
         self.backup_filename = None
         self.log_thetas = np.array([]).reshape(n_chains, 0, self.size)
         self.step_size = epsilon
+        self.thin = thin
 
         seed_sequence = np.random.SeedSequence(seed)
         self.rng = np.random.Generator(
@@ -216,7 +219,6 @@ class MCMC:
         self.lam = self.optimizer.result.meta["lambda"] * self.n_samples
 
         self.shape = optimizer.result.log_theta.shape
-        self.acceptance = np.zeros(n_chains)
 
     def _get_grad_and_log_likelihood(self):
 
@@ -327,6 +329,8 @@ class MCMC:
         n_steps: int,
     ):
 
+        prev_n = self.log_thetas.shape[1]
+
         kernel = self.kernel_class(
             rng=self.kernel_rngs[walker_id],
             step_size=self.step_size,
@@ -336,22 +340,22 @@ class MCMC:
             **{arg: getattr(self, arg) for arg in self.kernel_args[self.kernel_class]},
         )
 
-        log_thetas = np.array([]).reshape(0, prev_step.shape[0])
-        n_accepted = 0
+        log_thetas = np.empty((n_steps // self.thin, self.size))
 
         prev_step_res = kernel.get_params(prev_step)
 
         for r in range(n_steps):
             if walker_id == 0:
-                print(f"Step {r:6}/{n_steps:6}", end="\r")
+                print(
+                    f"Step {prev_n + r + 1:6}/{prev_n + n_steps:6}", end="\r")
 
-            prev_step, prev_step_res, ratio, accepted = kernel.one_step(
+            prev_step, prev_step_res, ratio, _ = kernel.one_step(
                 prev_step, prev_step_res, return_info=True
             )
-            log_thetas = np.vstack([log_thetas, prev_step])
-            n_accepted += accepted
+            if (r + prev_n) % self.thin == 0:
+                log_thetas[r // self.thin] = prev_step
 
-        return walker_id, log_thetas, n_accepted, kernel.rng
+        return walker_id, log_thetas, kernel.rng
 
     def run(self, n_steps: int):
 
@@ -376,11 +380,9 @@ class MCMC:
             [self.log_thetas, np.empty((self.n_chains, n_steps, self.size))],
             axis=1
         )
-        for walker_id, log_thetas, n_accepted, kernel_rng in results:
+        for walker_id, log_thetas, kernel_rng in results:
             self.kernel_rngs[walker_id] = kernel_rng
             self.log_thetas[walker_id, -n_steps:] = log_thetas
-            self.acceptance[walker_id] = (
-                self.acceptance[walker_id] * n_before + n_accepted) / (n_before + n_steps)
 
         return self.log_thetas
 
@@ -388,13 +390,38 @@ class MCMC:
         sampler = self.__dict__.copy()
         sampler.pop("grad_and_log_likelihood")
         sampler.pop("log_prior")
-        sampler.pop("log_prior_grad")
+        sampler.pop("log_prior_grad", None)
+        sampler.pop("log_prior_hessian", None)
 
         return sampler
+
+    def acceptance(self, burn_in=0.2, chain_id=None):
+        log_thetas = self.log_thetas[:, int(
+            burn_in * self.log_thetas.shape[1]):, :]
+
+        acceptance_rates = list()
+
+        for i in range(chain_id or log_thetas.shape[0]):
+            accepted = np.sum(
+                np.any(
+                    log_thetas[i, 1:, :] != log_thetas[i, :-1, :],
+                    axis=-1,
+                )
+            )
+            total = log_thetas.shape[1] - 1
+            acceptance_rates.append(accepted / total)
+
+        return np.array(acceptance_rates) if chain_id is None else acceptance_rates[0]
 
     def __setstate__(self, sampler):
 
         self.__dict__.update(sampler)
         self.grad_and_log_likelihood = self._get_grad_and_log_likelihood()
-        self.log_prior = self._get_log_prior()
-        self.log_prior_grad = self._get_log_prior_grad()
+        self.log_prior = self._prior[0] or self._get_log_prior(
+            self._penalty[0])
+        if self.kernel_class in [MALAKernel, smMALAKernel]:
+            self.log_prior_grad = self._prior[1] or self._get_log_prior_grad(
+                self._penalty[1])
+        if self.kernel_class == smMALAKernel:
+            self.log_prior_hessian = self._prior[2] or self._get_log_prior_hessian(
+                self._penalty[2])
