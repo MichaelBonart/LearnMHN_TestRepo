@@ -10,7 +10,7 @@ import itertools
 import json
 import warnings
 from math import factorial
-from typing import Iterator, Optional, Union, Literal
+from typing import Iterator, Optional, Union, Literal, overload
 from collections import defaultdict
 
 import matplotlib
@@ -100,6 +100,46 @@ class cMHN:
             return df
         else:
             return art_data
+
+    @overload
+    def sample_trajectories(
+        self,
+        trajectory_num: int,
+        initial_state: np.ndarray | list[str] | None = None,
+        output_event_names: bool = False,
+        timed: Literal[False] = ...,
+        return_event_times: Literal[False] = ...
+    ) -> tuple[list[list[int | str]],  np.ndarray]: ...
+
+    @overload
+    def sample_trajectories(
+        self,
+        trajectory_num: int,
+        initial_state: np.ndarray | list[str] | None = None,
+        output_event_names: bool = False,
+        timed: float = ...,
+        return_event_times: Literal[False] = ...
+    ) -> list[list[int | str]]: ...
+
+    @overload
+    def sample_trajectories(
+        self,
+        trajectory_num: int,
+        initial_state: np.ndarray | list[str] | None = None,
+        output_event_names: bool = False,
+        timed: Literal[False] = ...,
+        return_event_times: Literal[True] = ...
+    ) -> tuple[list[list[int | str]], list[list[float]], np.ndarray]: ...
+
+    @overload
+    def sample_trajectories(
+        self,
+        trajectory_num: int,
+        initial_state: np.ndarray | list[str] | None = None,
+        output_event_names: bool = False,
+        timed: float = ...,
+        return_event_times: Literal[True] = ...
+    ) -> tuple[list[list[int | str]], list[list[float]]]: ...
 
     def sample_trajectories(
         self,
