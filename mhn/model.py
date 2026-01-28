@@ -109,11 +109,9 @@ class cMHN:
         timed: float | Literal[False] = False,
         return_event_times: bool = False
     ) -> (
-        tuple[
-            list[list[int | str]]
-            | list[list[int | str]], (list[list[float]] | np.ndarray)
-            | list[list[int | str]], list[list[float]], np.ndarray
-        ]
+        list[list[int | str]] |
+        tuple[list[list[int | str]], (list[list[float]] | np.ndarray)] |
+        tuple[list[list[int | str]], list[list[float]], np.ndarray]
     ):
         """
         Simulates event accumulation using the Gillespie algorithm. Use np.random.seed() to make results reproducible.
@@ -131,7 +129,7 @@ class cMHN:
                                                     Accumulation times of events already present in initial_state are declared as None. Defaults to False.
 
         Returns:
-            tuple[list[list[int | str]] | list[list[int | str]], (list[list[float]] | np.ndarray) | list[list[int | str]], list[list[float]], np.ndarray]: A tuple with 1-3 elements containing:
+            list[list[int | str]] | tuple[list[list[int | str]], (list[list[float]] | np.ndarray)] | tuple[list[list[int | str]], list[list[float]], np.ndarray]: List of all trajectories OR a tuple with 2-3 elements containing:
                                                     - List of all trajectories,
                                                     - if return_event_times is True, a list of lists of accumulation times for all trajectories' events,
                                                     - if timed is False, a numpy array of all simulated samples' observation times.
@@ -160,6 +158,8 @@ class cMHN:
                 index = self.events.index(event)
                 initial_state[index] = 1
 
+        # depending on the choice of `timed` and `return_event_times` gillespie_result will be a tuple containing 1-3 elements
+        # the tuple's first entry will always be the list of sampled trajectories
         if timed is False:
             gillespie_result = utilities.gillespie(
                 self.log_theta, initial_state, trajectory_num, return_event_times
@@ -182,6 +182,9 @@ class cMHN:
                 ),
                 trajectory_list,
             )
+
+        if len(gillespie_result) == 1:
+            return gillespie_result[0]
 
         return gillespie_result
 
