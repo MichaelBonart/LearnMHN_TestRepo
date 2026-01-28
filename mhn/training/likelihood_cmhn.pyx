@@ -79,7 +79,7 @@ IF NVCC_AVAILABLE:
         #define DLL_PREFIX 
         #endif
 
-        int DLL_PREFIX cuda_gradient_and_score_implementation(double *ptheta, int n, State *mutation_data, int data_size, double *grad_out, double *score_out);
+        int DLL_PREFIX cuda_gradient_and_score_implementation(double *ptheta, int n, State *mutation_data, int data_size, int* repetition_count, double *grad_out, double *score_out);
         void DLL_PREFIX get_error_name_and_description(int error, const char **error_name, const char **error_description);
         int DLL_PREFIX cuda_functional();
         """
@@ -691,7 +691,7 @@ cpdef cuda_gradient_and_score(double[:, :] theta, StateContainer mutation_data):
         cdef const char *error_name
         cdef const char *error_description
 
-        error_code = cuda_gradient_and_score_implementation(&theta[0, 0], n, &mutation_data.states[0], &mutation_data.repetition_descriptor[0], data_size, &grad_out[0], &score)
+        error_code = cuda_gradient_and_score_implementation(&theta[0, 0], n, &mutation_data.states[0], data_size, &mutation_data.repetition_descriptor[0], &grad_out[0], &score)
 
         if error_code != 0:
             get_error_name_and_description(error_code, &error_name, &error_description)
