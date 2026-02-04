@@ -725,6 +725,14 @@ __global__ void add_to_score(double *score, double *pth_end){
     }
 }
 
+__global__ void add_to_score_weighted(double *score, double *pth_end, const int weight){
+    const int cuda_index = blockIdx.x * blockDim.x + threadIdx.x;
+
+    if(cuda_index == 0){
+        score[0] += log(pth_end[0]) * weight;
+    }
+}
+
 
 extern "C"
 {
@@ -820,7 +828,7 @@ extern "C"
             add_arrays_weighted<<<32, 64>>>(partial_grad, cuda_grad_out, repetition_count[i], n*n);
 
             int mutation_num = get_mutation_num(&mutation_data[i]);
-            add_to_score<<<1, 1>>>(cuda_score, &pth[(1 << mutation_num) - 1]);
+            add_to_score_weighted<<<1, 1>>>(cuda_score, &pth[(1 << mutation_num) - 1], repetition_count[i]);
         }
 
         // copy the results to the CPU
