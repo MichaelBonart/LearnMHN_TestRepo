@@ -129,7 +129,7 @@ class MCMC:
                  mhn_model: oMHN | cMHN | None = None, data=None, penalty=None,
                  log_prior=None, n_chains=10,
                  step_size: Literal["auto"] | float | ArrayLike = "auto",
-                 kernel_class=MALAKernel, thin: int = 100, seed=0,) -> None:
+                 kernel_class=MALAKernel, thin: int = 100, seed: int | None = None,) -> None:
         if optimizer is None:
             if mhn_model is None or data is None:
                 raise ValueError(
