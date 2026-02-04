@@ -78,21 +78,21 @@ class MCMC:
 
     @overload
     def __init__(self, *, optimizer: ..., n_chains: ... = ...,
-                 epsilon: ... = ...,
+                 step_size: ... = ...,
                  kernel_class: MALAKernel | RWMKernel = ..., thin: ... = ...,
                  seed: ... = ...,): ...
 
     @overload
     def __init__(self, *, mhn_model: ..., data: ...,
                  penalty: Penalty | Callable[[np.ndarray], float],
-                 n_chains: ... = ..., epsilon: ... = ...,
+                 n_chains: ... = ..., step_size: ... = ...,
                  kernel_class: Literal[RWMKernel] = ..., thin: ... = ...,
                  seed: ... = ...): ...
 
     @overload
     def __init__(self, *, mhn_model: ..., data: ...,
                  log_prior: Callable[[np.ndarray], float],
-                 n_chains: ... = ..., epsilon: ... = ...,
+                 n_chains: ... = ..., step_size: ... = ...,
                  kernel_class: Literal[RWMKernel] = ..., thin: ... = ...,
                  seed: ... = ...): ...
 
@@ -101,7 +101,7 @@ class MCMC:
                  penalty: Penalty | tuple[
                      Callable[[np.ndarray], float],
                      Callable[[np.ndarray], np.ndarray]],
-                 n_chains: ... = ..., epsilon: ... = ...,
+                 n_chains: ... = ..., step_size: ... = ...,
                  kernel_class: Literal[MALAKernel] = ..., thin: ... = ...,
                  seed: ... = ...): ...
 
@@ -111,7 +111,7 @@ class MCMC:
                      Callable[[np.ndarray], float],
 
                      Callable[[np.ndarray], np.ndarray],],
-                 n_chains: ... = ..., epsilon: ... = ...,
+                 n_chains: ... = ..., step_size: ... = ...,
                  kernel_class: Literal[MALAKernel] = ..., thin: ... = ...,
                  seed: ... = ...): ...
 
@@ -121,14 +121,15 @@ class MCMC:
                      Callable[[np.ndarray], float],
                      Callable[[np.ndarray], np.ndarray],
                      Callable[[np.ndarray], np.ndarray],],
-                 n_chains: ... = ..., epsilon: ... = ...,
+                 n_chains: ... = ..., step_size: ... = ...,
                  kernel_class: Literal[smMALAKernel] = ..., thin: ... = ...,
                  seed: ... = ...): ...
 
     def __init__(self, *, optimizer: Optimizer = None,
                  mhn_model: oMHN | cMHN | None = None, data=None, penalty=None,
-                 log_prior=None, n_chains=10, epsilon="auto",
-                 kernel_class=MALAKernel, thin: int = 1, seed=0,) -> None:
+                 log_prior=None, n_chains=10,
+                 step_size: Literal["auto"] | float | ArrayLike = "auto",
+                 kernel_class=MALAKernel, thin: int = 100, seed=0,) -> None:
         if optimizer is None:
             if mhn_model is None or data is None:
                 raise ValueError(
@@ -152,6 +153,14 @@ class MCMC:
             assert optimizer.result is not None, (
                 "Optimizer must be trained before passing to Sampler."
             )
+
+            # TODO if penalty is not None:
+            #     if penalty != optimizer.penalty:
+            #         raise ValueError(
+            #             "When providing a trained optimizer, do not provide "
+            #             "a penalty."
+            #         )
+            penalty = optimizer._penalty
 
         # Transform penalty/prior into length-3 tuples
 
@@ -206,7 +215,7 @@ class MCMC:
         self.backup_interval = None
         self.backup_filename = None
         self.log_thetas = np.array([]).reshape(n_chains, 0, self.size)
-        self.step_size = epsilon
+        self.step_size = step_size
         self.thin = thin
 
         seed_sequence = np.random.SeedSequence(seed)
@@ -270,7 +279,7 @@ class MCMC:
         """
 
         def log_prior(log_theta: np.ndarray) -> float:
-            return self.lam * penalty(log_theta)
+            return -self.lam * penalty(log_theta)
 
         return log_prior
 
@@ -286,7 +295,7 @@ class MCMC:
         """
 
         def log_prior_grad(log_theta: np.ndarray) -> float:
-            return self.lam * penalty_grad(log_theta)
+            return -self.lam * penalty_grad(log_theta)
 
         return log_prior_grad
 
@@ -303,7 +312,7 @@ class MCMC:
         """
 
         def log_prior_hessian(log_theta: np.ndarray) -> float:
-            return self.lam * penalty_hessian(log_theta)
+            return -self.lam * penalty_hessian(log_theta)
 
         return log_prior_hessian
 
@@ -342,9 +351,12 @@ class MCMC:
         prev_step: np.ndarray,
         walker_id: int,
         n_steps: int,
-        verbose: bool = True,
+        verbose: bool,
+        first_step_done: bool
     ):
         prev_n = self.log_thetas.shape[1]
+        if first_step_done and prev_n == 1:
+            prev_n = 0
 
         kernel = self.kernel_class(
             rng=self.kernel_rngs[walker_id],
@@ -364,33 +376,37 @@ class MCMC:
         for r in range(n_steps):
             if verbose and walker_id == 0:
                 print(
-                    f"Step {prev_n + r + 1:6}/{prev_n + n_steps:6}", end="\r")
+                    f"Step {prev_n * self.thin + r + 1 + first_step_done:6}/{prev_n * self.thin + n_steps + first_step_done:6}", end="\r")
 
-            prev_step, prev_step_res, ratio, _ = kernel.one_step(
+            prev_step, prev_step_res, _, _ = kernel.one_step(
                 prev_step, prev_step_res, return_info=True
             )
-            if (r + prev_n) % self.thin == 0:
+            if (r + first_step_done) % self.thin == 0:
                 log_thetas[r // self.thin] = prev_step
 
         return walker_id, log_thetas, kernel.rng
 
-    def _run(self, n_steps: int, verbose: bool = True):
+    def _run(self, n_steps: int, verbose: bool, first_step_done: bool):
 
         with mp.Pool() as pool:
             results = pool.starmap(
                 self.walker,
-                [(prev_step, i, n_steps, verbose)
+                [(prev_step, i, n_steps, verbose, first_step_done)
                  for i, prev_step in enumerate(self.log_thetas[:, -1, :])],
             )
 
         # Update kernel_rngs
         self.log_thetas = np.concatenate(
-            [self.log_thetas, np.empty((self.n_chains, n_steps, self.size))],
+            [self.log_thetas, np.empty(
+                (self.n_chains, n_steps // self.thin, self.size))],
             axis=1
         )
+
         for walker_id, log_thetas, kernel_rng in results:
             self.kernel_rngs[walker_id] = kernel_rng
-            self.log_thetas[walker_id, -n_steps:] = log_thetas
+            if n_steps // self.thin > 0:
+                self.log_thetas[walker_id, -
+                                (n_steps // self.thin):] = log_thetas
 
     def run(self,
             stopping_crit: Literal["r_hat", "ESS"] | Callable | None = "r_hat",
@@ -433,13 +449,15 @@ class MCMC:
             if max_steps == 1:
                 return self.log_thetas
 
-            self._run(min(check_interval - 1, max_steps - 1), verbose=verbose)
+            self._run(min(check_interval - 1, max_steps - 1),
+                      verbose=verbose, first_step_done=True)
             max_steps -= min(check_interval, max_steps)
 
         while max_steps and not stopping_crit(
             self.log_thetas[:, burn_in if isinstance(burn_in, int)
                             else int(burn_in * self.log_thetas.shape[1]):, :]):
-            self._run(min(check_interval, max_steps), verbose=verbose)
+            self._run(min(check_interval, max_steps),
+                      verbose=verbose, first_step_done=False)
             max_steps -= min(check_interval, max_steps)
 
         return self.log_thetas
@@ -524,12 +542,14 @@ class MCMC:
                 print(f"Trial {trial+1}: step_sizes={step_sizes}")
 
             temp_sampler = MCMC(
-                optimizer=self.optimizer,
+                mhn_model=self.optimizer.result,
+                data=self.optimizer.training_data,
                 n_chains=n_parallel * 3,
-                epsilon=step_sizes.repeat(3),
+                step_size=step_sizes.repeat(3),
                 penalty=self._penalty,
                 log_prior=self._log_prior,
                 kernel_class=self.kernel_class,
+                thin=1,
             )
 
             temp_sampler.run(max_steps=n_steps, verbose=True)
@@ -556,3 +576,21 @@ class MCMC:
                     (step_sizes[argbest + 1] if argbest < n_parallel - 1
                      else step_sizes[argbest] * 10),
                     n_parallel)
+
+    def rhat(self, burn_in: int | float = 0.2, **kwargs):
+        if isinstance(burn_in, float):
+            burn_in = int(burn_in * self.log_thetas.shape[1])
+
+        log_thetas = self.log_thetas[:, burn_in:, :]
+
+        return np.array(arviz.rhat(
+            arviz.convert_to_inference_data(log_thetas), **kwargs).x)
+
+    def ess(self, burn_in: int | float = 0.2, **kwargs):
+        if isinstance(burn_in, float):
+            burn_in = int(burn_in * self.log_thetas.shape[1])
+
+        log_thetas = self.log_thetas[:, burn_in:, :]
+
+        return np.array(arviz.ess(
+            arviz.convert_to_inference_data(log_thetas), **kwargs).x)
