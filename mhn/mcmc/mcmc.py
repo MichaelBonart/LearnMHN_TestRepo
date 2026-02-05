@@ -144,6 +144,7 @@ class MCMC:
                 else cMHNOptimizer()
             optimizer.load_data_matrix(data)
             optimizer._result = mhn_model
+            optimizer._penalty = None
 
         else:
             if mhn_model is not None or data is not None:
@@ -318,7 +319,7 @@ class MCMC:
 
     def _take_initial_step(self):
 
-        if self.optimizer.penalty[0] in [
+        if self._penalty[0] in [
             penalties_omhn.l2,
             penalties_cmhn.l2,
         ]:
@@ -327,7 +328,7 @@ class MCMC:
                 scale=1 / np.sqrt(2 * self.lam),
             )
 
-        elif self.optimizer.penalty[0] in [
+        elif self._penalty[0] in [
             penalties_omhn.l1,
             penalties_omhn.sym_sparse,
             penalties_cmhn.l1,
@@ -381,6 +382,7 @@ class MCMC:
             prev_step, prev_step_res, _, _ = kernel.one_step(
                 prev_step, prev_step_res, return_info=True
             )
+
             if (r + first_step_done) % self.thin == 0:
                 log_thetas[r // self.thin] = prev_step
 
@@ -391,8 +393,8 @@ class MCMC:
         with mp.Pool() as pool:
             results = pool.starmap(
                 self.walker,
-                [(prev_step, i, n_steps, verbose, first_step_done)
-                 for i, prev_step in enumerate(self.log_thetas[:, -1, :])],
+                [(self.log_thetas[i, -1, :], i, n_steps, verbose, first_step_done)
+                 for i in range(self.n_chains)],
             )
 
         # Update kernel_rngs
@@ -428,6 +430,8 @@ class MCMC:
             1_000_000 if self.kernel_class in [RWMKernel, MALAKernel]
             else 100_000 if self.kernel_class == smMALAKernel
             else None)
+
+        max_steps = (max_steps // self.thin) * self.thin
 
         check_interval = check_interval or 1000
 
