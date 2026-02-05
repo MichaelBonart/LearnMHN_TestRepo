@@ -218,6 +218,7 @@ class MCMC:
         self.log_thetas = np.array([]).reshape(n_chains, 0, self.size)
         self.step_size = step_size
         self.thin = thin
+        self.initial_step = None
 
         seed_sequence = np.random.SeedSequence(seed)
         self.rng = np.random.Generator(
@@ -319,11 +320,14 @@ class MCMC:
 
     def _take_initial_step(self):
 
+        if self.initial_step is not None:
+            return
+
         if self._penalty[0] in [
             penalties_omhn.l2,
             penalties_cmhn.l2,
         ]:
-            self.log_thetas = self.rng.normal(
+            self.initial_step = self.rng.normal(
                 size=(self.n_chains, 1, self.size),
                 scale=1 / np.sqrt(2 * self.lam),
             )
@@ -334,7 +338,7 @@ class MCMC:
             penalties_cmhn.l1,
             penalties_cmhn.sym_sparse,
         ]:
-            self.log_thetas = self.rng.laplace(
+            self.initial_step = self.rng.laplace(
                 size=(self.n_chains, 1, self.size),
                 scale=1 / self.lam,
             )
@@ -343,7 +347,7 @@ class MCMC:
             raise NotImplementedError(
                 "When using a custom penalty, you must manually set " +
                 "the initial chain values by setting " +
-                R"`Sampler.log_thetas` to an array of shape " +
+                R"`Sampler.initial_step` to an array of shape " +
                 "(n_chains, 1, m) with m the number of parameters. "
             )
 
@@ -353,11 +357,8 @@ class MCMC:
         walker_id: int,
         n_steps: int,
         verbose: bool,
-        first_step_done: bool
     ):
         prev_n = self.log_thetas.shape[1]
-        if first_step_done and prev_n == 1:
-            prev_n = 0
 
         kernel = self.kernel_class(
             rng=self.kernel_rngs[walker_id],
@@ -377,23 +378,26 @@ class MCMC:
         for r in range(n_steps):
             if verbose and walker_id == 0:
                 print(
-                    f"Step {prev_n * self.thin + r + 1 + first_step_done:6}/{prev_n * self.thin + n_steps + first_step_done:6}", end="\r")
+                    f"Step {prev_n * self.thin + r + 1:6}/{prev_n * self.thin + n_steps:6}", end="\r")
 
             prev_step, prev_step_res, _, _ = kernel.one_step(
                 prev_step, prev_step_res, return_info=True
             )
 
-            if (r + first_step_done) % self.thin == 0:
+            if (r + 1) % self.thin == 0:
                 log_thetas[r // self.thin] = prev_step
 
         return walker_id, log_thetas, kernel.rng
 
-    def _run(self, n_steps: int, verbose: bool, first_step_done: bool):
+    def _run(self, n_steps: int, verbose: bool):
 
         with mp.Pool() as pool:
             results = pool.starmap(
                 self.walker,
-                [(self.log_thetas[i, -1, :], i, n_steps, verbose, first_step_done)
+                [(
+                    self.log_thetas[i, -1, :] if self.log_thetas.shape[1] > 0
+                    else self.initial_step[i, 0, :],
+                    i, n_steps, verbose)
                  for i in range(self.n_chains)],
             )
 
@@ -417,14 +421,22 @@ class MCMC:
 
         if stopping_crit == "r_hat":
             def stopping_crit(log_thetas):
-                return \
-                    np.all(np.array(arviz.rhat(arviz.convert_to_dataset(log_thetas)
-                                               ).to_array()) < 1.01)
+                if log_thetas.shape[1] < self.n_chains:
+                    return False
+                return np.all(
+                    np.array(arviz.rhat(arviz.convert_to_dataset(log_thetas)
+                                        ).to_array()) < 1.01)
 
         elif stopping_crit == "ESS":
-            def stopping_crit(log_thetas): return \
-                np.all(np.array(arviz.ess(arviz.convert_to_dataset(log_thetas)
-                                          ).to_array()) > 100)
+            def stopping_crit(log_thetas):
+                if log_thetas.shape[1] < self.n_chains:
+                    return False
+                return np.all(
+                    np.array(arviz.ess(arviz.convert_to_dataset(log_thetas)
+                                       ).to_array()) > 100)
+
+        elif stopping_crit is None:
+            def stopping_crit(log_thetas): return False
 
         max_steps = max_steps or (
             1_000_000 if self.kernel_class in [RWMKernel, MALAKernel]
@@ -442,26 +454,17 @@ class MCMC:
             if verbose:
                 print(f"Using step size: {self.step_size}")
 
-        n_before = self.log_thetas.shape[1]
+        if self.log_thetas.shape[1] == 0:
+            self._take_initial_step()
 
         if max_steps == 0:
             return self.log_thetas
-
-        if n_before == 0 and max_steps > 0:
-            self._take_initial_step()
-
-            if max_steps == 1:
-                return self.log_thetas
-
-            self._run(min(check_interval - 1, max_steps - 1),
-                      verbose=verbose, first_step_done=True)
-            max_steps -= min(check_interval, max_steps)
 
         while max_steps and not stopping_crit(
             self.log_thetas[:, burn_in if isinstance(burn_in, int)
                             else int(burn_in * self.log_thetas.shape[1]):, :]):
             self._run(min(check_interval, max_steps),
-                      verbose=verbose, first_step_done=False)
+                      verbose=verbose)
             max_steps -= min(check_interval, max_steps)
 
         return self.log_thetas
@@ -554,9 +557,23 @@ class MCMC:
                 log_prior=self._log_prior,
                 kernel_class=self.kernel_class,
                 thin=1,
+                seed=self.rng.integers(0, 2**32, dtype=np.uint32)
             )
 
-            temp_sampler.run(max_steps=n_steps, verbose=True)
+            if self.initial_step is not None:
+                temp_sampler.initial_step = np.stack(
+                    [self.initial_step[i % self.n_chains, :, :]
+                     for i in range(n_parallel * 3)])
+
+            try:
+                temp_sampler.run(max_steps=n_steps, verbose=True,
+                                 stopping_crit=None)
+            except ZeroDivisionError as e:
+                if verbose:
+                    print(f"Trial {trial+1} failed with error: {e}\n"
+                          "Decreasing step sizes.")
+                step_sizes *= 0.1
+                continue
 
             acceptance_rates = temp_sampler.acceptance(
                 burn_in=burn_in).reshape(n_parallel, 3).mean(axis=1)
