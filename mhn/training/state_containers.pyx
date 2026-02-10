@@ -118,6 +118,7 @@ cdef class StateContainer:
 
         self.data_size = mutation_data.shape[0]
         self.gene_num = mutation_data.shape[1]
+        self.internal_data_size = self.data_size
 
         self.max_mutation_num = compute_max_mutation_number(mutation_data)
         if self.max_mutation_num == 0:
@@ -125,7 +126,7 @@ cdef class StateContainer:
         elif self.max_mutation_num > 32:
             raise ValueError("A single sample must not contain more than 32 mutations")
 
-        self.states = <State *> malloc(self.data_size * sizeof(State))
+        self.states = <State *> malloc(self.internal_data_size * sizeof(State))
 
         if not self.states:
             raise MemoryError()
@@ -133,7 +134,7 @@ cdef class StateContainer:
         fill_states(self.states, mutation_data)
 
 
-        self.repetition_descriptor = <int *> malloc(self.data_size * sizeof(int))
+        self.repetition_descriptor = <int *> malloc(self.internal_data_size * sizeof(int))
 
         if not self.repetition_descriptor:
             raise MemoryError()
@@ -161,10 +162,37 @@ cdef class StateContainer:
             Array describing repetitions of samples in samples .
         """
         python_array=[]
-        for i in range(self.data_size):
+        for i in range(self.internal_data_size):
             python_array.append( self.repetition_descriptor[i] )
 
         return python_array
+
+    def compress_data(self):
+        """
+        This function removes the data of all samples whose assigned repetition_count is zero.
+        The arrays *states and *repetition_descriptor are reallocated as (shorter) arrays.
+        self.internal_data_size refers to the length of the compressed arrays, while self.data_size still refers to the original number of datapoints.
+        """
+        compr_data_size = 0
+        for i in range(0, self.internal_data_size):
+            if self.repetition_descriptor[i]!=0: compr_data_size+=1
+        
+        compr_states = <State *> malloc(compr_data_size * sizeof(State))
+        compr_repetition_descriptor = <int *> malloc(compr_data_size * sizeof(int))
+
+        j=0
+        for i in range(0, compr_data_size):
+            compr_states[i] = self.states[j]
+            compr_repetition_descriptor[i] = self.repetition_descriptor[j]
+            j+=1
+            while self.repetition_descriptor[j]==0: j+=1
+
+        free(self.states)
+        free(self.repetition_descriptor)
+
+        self.states = compr_states
+        self.repetition_descriptor = compr_repetition_descriptor
+        self.internal_data_size = compr_data_size
 
     def __dealloc__(self):
         free(self.states)
