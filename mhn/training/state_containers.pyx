@@ -5,7 +5,7 @@ a new MHN.
 """
 # author(s): Stefan Vocht
 
-from libc.stdlib cimport malloc, free
+from libc.stdlib cimport malloc, free, qsort
 from libc.string cimport memcpy
 
 from mhn.training.state_containers cimport State
@@ -99,6 +99,33 @@ cdef void construct_repetition_descriptor(int* repetition_descriptor, int[:,:] m
                 repetition_descriptor[j] = 0
 
 
+cdef int compare_states(const void* a, const void* b) nogil:
+    cdef State a_v = (<State*>a)[0]
+    cdef State b_v = (<State*>b)[0]
+
+    for i in range(STATE_SIZE):
+        if a_v.parts[i] == b_v.parts[i]: continue
+        if a_v.parts[i] < b_v.parts[i]: return -1
+        return 1
+    return 0
+
+cdef void construct_sorted_repetition_descriptor(int* repetition_descriptor, State *states, int N):
+    """
+    This function counts the repetitions of each row in mutation_data. 
+    The repetition count of each row is stored in the returned array at the index of the row's first occurence in mutation_data.
+    All other values in the returned array are zero.    
+    """
+
+    qsort(<void*>states, <size_t>N, sizeof(State), compare_states)
+    for i in range(0,N):
+        repetition_descriptor[i] = 1
+
+    for i in range(N-1, 0, -1):
+        if compare_states(&states[i-1], &states[i]) == 0:
+            repetition_descriptor[i-1] = 1 + repetition_descriptor[i] 
+            repetition_descriptor[i] = 0
+
+
 
 cdef class StateContainer:
     """
@@ -139,7 +166,8 @@ cdef class StateContainer:
         if not self.repetition_descriptor:
             raise MemoryError()
 
-        construct_repetition_descriptor(self.repetition_descriptor, mutation_data)
+        #construct_repetition_descriptor(self.repetition_descriptor, mutation_data)
+        construct_sorted_repetition_descriptor(self.repetition_descriptor, self.states, self.internal_data_size)
 
 
     def get_data_shape(self):
@@ -178,14 +206,21 @@ cdef class StateContainer:
             if self.repetition_descriptor[i]!=0: compr_data_size+=1
         
         compr_states = <State *> malloc(compr_data_size * sizeof(State))
+        
+        if not compr_states:
+            raise MemoryError()
+
         compr_repetition_descriptor = <int *> malloc(compr_data_size * sizeof(int))
 
+        if not compr_repetition_descriptor:
+            raise MemoryError()
+
         j=0
-        for i in range(0, compr_data_size):
-            compr_states[i] = self.states[j]
-            compr_repetition_descriptor[i] = self.repetition_descriptor[j]
-            j+=1
-            while self.repetition_descriptor[j]==0: j+=1
+        for i in range(self.internal_data_size):
+            if self.repetition_descriptor[i] != 0:
+                compr_states[j] = self.states[i]
+                compr_repetition_descriptor[j] = self.repetition_descriptor[i]
+                j+=1
 
         free(self.states)
         free(self.repetition_descriptor)
@@ -245,8 +280,8 @@ def create_indep_model(StateContainer state_container):
 
     for i in range(n):
         sum_of_occurance = 0
-        for j in range(state_container.data_size):
-            sum_of_occurance += (state_container.states[j].parts[i >> 5] >> (i & 31)) & 1
+        for j in range(state_container.internal_data_size):
+            sum_of_occurance += ((state_container.states[j].parts[i >> 5] >> (i & 31)) & 1) * state_container.repetition_descriptor[j]
 
         if sum_of_occurance == 0:
             warnings.warn(f"During independence model creation: event {i} never occurs in the data, base rate will be 0")
