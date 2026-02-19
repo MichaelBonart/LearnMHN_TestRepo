@@ -79,12 +79,12 @@ IF NVCC_AVAILABLE:
         #define DLL_PREFIX 
         #endif
 
-        int DLL_PREFIX cuda_gradient_and_score_implementation(double *ptheta, int n, State *mutation_data, int data_size, int* repetition_count, double *grad_out, double *score_out);
+        int DLL_PREFIX cuda_gradient_and_score_implementation(double *ptheta, int n, State *mutation_data, int internal_data_size, int* repetition_count, double *grad_out, double *score_out);
         void DLL_PREFIX get_error_name_and_description(int error, const char **error_name, const char **error_description);
         int DLL_PREFIX cuda_functional();
         """
 
-        int cuda_gradient_and_score_implementation(double *ptheta, int n, State *mutation_data, int data_size, int *repetition_count, double *grad_out, double *score_out)
+        int cuda_gradient_and_score_implementation(double *ptheta, int n, State *mutation_data, int internal_data_size, int *repetition_count, double *grad_out, double *score_out)
         void get_error_name_and_description(int error, const char **error_name, const char **error_description)
         int cuda_functional()
 

@@ -742,18 +742,18 @@ extern "C"
      * @param[in] ptheta array containing the theta entries
      * @param[in] n number of genes considered by the MHN, also number of columns/rows of theta
      * @param[in] mutation_data array of States, where each state represents a tumor sample
-     * @param[in] data_size number of tumor samples in mutation_data
+     * @param[in] internal_data_size number of tumor samples in mutation_data
      * @param[in] repetition_count array describing repetitions of samples in mutation_data
      * @param[out] grad_out array of size n*n in which the gradient will be stored
      * @param[out] score_out the marginal log-likelihood score is stored at this position
      *
      * @return CUDA error code converted to integer for better interoperability with Cython
     */
-    int DLL_PREFIX cuda_gradient_and_score_implementation(double *ptheta, int n, State *mutation_data, int data_size, int *repetition_count, double *grad_out, double *score_out) {
+    int DLL_PREFIX cuda_gradient_and_score_implementation(double *ptheta, int n, State *mutation_data, int internal_data_size, int *repetition_count, double *grad_out, double *score_out) {
 
         // determine the maximum number of mutations present in a single tumor sample
         int max_mutation_num = 0;
-        for (int i = 0; i < data_size; i++) {
+        for (int i = 0; i < internal_data_size; i++) {
             if (get_mutation_num(&mutation_data[i]) > max_mutation_num) max_mutation_num = get_mutation_num(&mutation_data[i]);
         }
 
@@ -820,7 +820,7 @@ extern "C"
 
         // compute the gradient for each tumor sample and add them together
         // for repeated samples compute gradient only once and weigh it accordingly
-        for (int i = 0; i < data_size; i++) {
+        for (int i = 0; i < internal_data_size; i++) {
 
             if(repetition_count[i] == 0) continue;
 
