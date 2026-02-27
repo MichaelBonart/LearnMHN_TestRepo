@@ -13,9 +13,9 @@ class TestFisher(unittest.TestCase):
         """Test the Fisher information matrix for cMHN.
         """
         n = 4
-        theta = ModelConstruction.random_theta(n)
+        log_theta = ModelConstruction.random_theta(n)
 
-        p_th = Likelihood.generate_pTh(theta)
+        p_th = Likelihood.generate_pTh(log_theta)
         FIM = np.zeros((n * n, n * n))
         X = [[l, k, j, i] for i in range(2) for j in range(2)
              for k in range(2) for l in range(2)]
@@ -24,16 +24,23 @@ class TestFisher(unittest.TestCase):
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")
                 grad = gradient_and_score(
-                    theta,
+                    log_theta,
                     StateContainer(
                         np.array(x, dtype=np.int32).reshape(1, n)
                     ))[0].flatten()
             FIM += p_th[i] * np.outer(grad, grad)
 
-        np.testing.assert_allclose(
-            FIM,
-            mhn.full_state_space.fisher.cython_fisher(theta)
-        )
+        for use_cuda in [True, False]:
+            with self.subTest(use_cuda):
+                if use_cuda:
+                    if mhn.cuda_available() != \
+                            mhn.CUDA_AVAILABLE:
+                        self.skipTest("CUDA not available for testing")
+                np.testing.assert_allclose(
+                    FIM,
+                    mhn.full_state_space.fisher.fisher(
+                        log_theta=log_theta, omhn=False, use_cuda=use_cuda)
+                )
 
     def test_omhn_fisher_theta_theta(self):
         """Test upper left Block of oMHN Fisher information matrix."""
