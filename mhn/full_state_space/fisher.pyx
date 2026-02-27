@@ -1,3 +1,10 @@
+"""
+This submodule implements the Fisher information matrix for cMHN and oMHN.
+
+It contains function for computing the FIM in Cython and for calling the
+CUDA implementation.
+"""
+
 # authors: Stefan Vocht, Y. Linda Hu
 
 from scipy.linalg.cython_blas cimport dcopy, dscal, daxpy, ddot

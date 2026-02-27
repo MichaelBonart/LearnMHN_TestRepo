@@ -5,7 +5,7 @@ It contains functions to compute the log-likelihood score and its gradient witho
 well as functions for matrix-vector multiplications with the transition rate matrix and [I-Q]^(-1).
 There are also functions to compute the probability distribution represented by an cMHN.
 """
-# author(s): Stefan Vocht
+# author(s): Stefan Vocht, Y. Linda Hu
 
 cimport cython
 

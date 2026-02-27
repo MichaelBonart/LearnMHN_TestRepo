@@ -20,8 +20,11 @@ UtilityFunctions:
 PerformanceCriticalCode:
     contains functions that dominate the runtime of score and gradient computations and must therefore be implemented
     efficiently
+
+fisher:
+    contains functions to compute the Fisher information matrix for MHN
 """
-# author(s): Stefan Vocht
+# author(s): Stefan Vocht, Y. Linda Hu
 
 
 from . import PerformanceCriticalCode
