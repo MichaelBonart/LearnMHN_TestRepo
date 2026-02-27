@@ -18,7 +18,8 @@ def cython_fisher(
 ):
     """
     Computes the fisher information matrix for cMHN.
-    The formulas are described in S. Vocht. Identifiability of Mutual Hazard Networks. Unpublished bachelor thesis, 2022
+    The formulas are described in S. Vocht. Identifiability of
+    Mutual Hazard Networks. Unpublished bachelor thesis, 2022
 
     Args:
         theta (np.ndarray): matrix containing the theta values
@@ -139,7 +140,6 @@ def cython_fisher(
 def omhn_fisher(
     log_theta: np.ndarray,
     use_cuda: bool = False,
-    **kwargs,
 ) -> np.ndarray:
     """
     Computes the Fisher information matrix for oMHN.
@@ -153,8 +153,10 @@ def omhn_fisher(
     """
 
     n = log_theta.shape[1]
+
     # subtract observation rates from each element in each column
     cmhn_log_theta = log_theta[:-1] - log_theta[-1]
+    
     # undo changes to the diagonal
     cmhn_log_theta[np.diag_indices(n)] += log_theta[-1]
 
@@ -163,7 +165,7 @@ def omhn_fisher(
     #        \ omega_theta | omega_omega /
 
     theta_theta = fisher(
-        cmhn_log_theta, omhn=False, use_cuda=use_cuda, **kwargs)
+        cmhn_log_theta, omhn=False, use_cuda=use_cuda)
 
     # F_{\omega_j}{\theta_st} = \sum_{i|=j} F_{\theta_ij}{\theta_st}
     theta_theta_reshape = theta_theta.reshape(n, n, n**2, order="F")

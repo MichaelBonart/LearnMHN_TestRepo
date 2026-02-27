@@ -25,7 +25,9 @@ class TestFisher(unittest.TestCase):
                 warnings.simplefilter("ignore")
                 grad = gradient_and_score(
                     theta,
-                    StateContainer(np.array(x, dtype=np.int32).reshape(1, n)))[0].flatten()
+                    StateContainer(
+                        np.array(x, dtype=np.int32).reshape(1, n)
+                    ))[0].flatten()
             FIM += p_th[i] * np.outer(grad, grad)
 
         np.testing.assert_allclose(
