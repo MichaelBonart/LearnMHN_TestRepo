@@ -1,14 +1,42 @@
-# author: Y. Linda Hu
+"""
+This submodule contains the Random-Walk Metropolis, Metropolis-Adjusted
+Langevin Algorithm (MALA) and simplified manifold MALA kernels and a
+base kernel base class. Those are responsible for the actual steps of
+MCMC.
+"""
+# author(s): Y. Linda Hu
+
 
 import collections
 import numpy as np
 import scipy.linalg
 from typing import Callable
 from ..full_state_space.fisher import fisher as get_fisher
+from typing import NamedTuple
 
 
 class Kernel:
-    """Base class for kernels used in MCMC sampling."""
+    """Base class for kernels used in MCMC sampling.
+
+    Attributes:
+        grad_and_log_likelihood (tuple[Callable[[np.ndarray], tuple[np.ndarray, float]]]):
+            function that takes a flattened (!) log_theta matrix and
+            returns a tuple of the gradient of the log-likelihood and
+            the log-likelihood itself.
+
+            **Important**: Here, the likelihood should *not* be
+            normalized by the number of samples like
+            in Schill et al. (2019)
+        log_prior: Callable[[np.ndarray], float]: function that takes a
+            flattened (!) log_theta matrix and returns the log-prior.
+            This corresponds to the negative penalty term times lambda,
+            multiplied by the number of samples, if applicable.
+        shape: tuple[int, int]: the shape of the log_theta matrix, i.e.
+            (n_events + 1, n_events) for oMHN and (n_events, n_events)
+            for cMHN.
+        rng: np.random.Generator | None = None: random number generator
+            to be used for sampling. If None, a new RNG will be created.
+    """
 
     def __init__(
         self,
@@ -24,20 +52,64 @@ class Kernel:
         self.size = shape[0]*shape[1]
 
 
-class smMALAKernel(Kernel):
+class smMALAResult(NamedTuple):
+    """Results for one smMALAKernel step.
 
-    Result = collections.namedtuple(
-        "smMALAResult",
-        [
-            "log_likelihood",
-            "log_prior",
-            "gradient",
-            "G",
-            "cholesky",
-            "mu",
-            "det_sqrt",
-        ],
-    )
+    Args:
+        log_likelihood (float): log-likelihood of the current step
+        log_prior (float): log-prior of the current step
+        gradient (np.ndarray): gradient of the log-posterior at the
+            current step
+        G (np.ndarray): metric tensor at the current step
+        cholesky (np.ndarray): Cholesky decomposition of the metric
+            tensor at the current step
+        mu (np.ndarray): mean of the proposal distribution at the
+            current step
+        det_sqrt (float): square root of the determinant of the metric
+            tensor at the current step
+    """
+    log_likelihood: float
+    log_prior: float
+    gradient: np.ndarray
+    G: np.ndarray
+    cholesky: np.ndarray
+    mu: np.ndarray
+    det_sqrt: float
+
+
+class smMALAKernel(Kernel):
+    """Class for kernel used in simplified manifold MALA. Extends Kernel.
+
+    Attributes:
+        step_size (float): step size for the smMALA sampling.
+        grad_and_log_likelihood (tuple[Callable[[np.ndarray], tuple[np.ndarray, float]]]):
+            function that takes a flattened (!) log_theta matrix and
+            returns a tuple of the gradient of the log-likelihood and
+            the log-likelihood itself.
+
+            **Important**: Here, the likelihood should *not* be
+            normalized by the number of samples like
+            in Schill et al. (2019)
+        log_prior: Callable[[np.ndarray], float]: function that takes a
+            flattened (!) log_theta matrix and returns the log-prior.
+            This corresponds to the negative penalty term times lambda,
+            multiplied by the number of samples, if applicable.
+        log_prior_grad: Callable[[np.ndarray], np.ndarray]: function
+            that takes a flattened (!) log_theta matrix and returns the
+            gradient of the log-prior.
+        log_prior_hessian: Callable[[np.ndarray], np.ndarray]: function
+            that takes a flattened (!) log_theta matrix and returns the
+            Hessian of the log-prior.
+        shape: tuple[int, int]: the shape of the log_theta matrix, i.e.
+            (n_events + 1, n_events) for oMHN and (n_events, n_events)
+            for cMHN.
+        use_cuda: bool = False: whether to use CUDA for the computation
+            of the Fisher information matrix. Only applicable if
+            mhn.cuda_available() says that CUDA is available.
+        rng: np.random.Generator | None = None: random number generator
+            to be used for sampling. If None, a new RNG will be created.
+
+    """
 
     def __init__(
         self,
@@ -47,7 +119,6 @@ class smMALAKernel(Kernel):
         log_prior_grad: Callable[[np.ndarray], np.ndarray],
         log_prior_hessian: Callable[[np.ndarray], np.ndarray],
         shape: tuple[int, int],
-        omhn: bool = True,
         use_cuda: bool = False,
         rng: np.random.Generator | None = None,
     ):
@@ -59,9 +130,20 @@ class smMALAKernel(Kernel):
         self.log_prior_grad = log_prior_grad
         self.log_prior_hessian = log_prior_hessian
         self.use_cuda = use_cuda
-        self.omhn = omhn
 
-    def propose(self, prev_step, prev_step_res):
+    def propose(self, prev_step: np.ndarray, prev_step_res: smMALAResult
+                ) -> tuple[np.ndarray, smMALAResult]:
+        """Propose a new step based on the previous step and its
+        results.
+
+        Args:
+            prev_step (np.array): the previous step
+            prev_step_res (smMALAResult): Results of the previous step.
+
+        Returns:
+            tuple[np.ndarray, smMALAResult]: the new step and its
+            results.
+        """
 
         # draw random normal number
         z = self.rng.normal(size=prev_step.size)
@@ -74,7 +156,24 @@ class smMALAKernel(Kernel):
         new_step = prev_step_res.mu + y
         return new_step, self.get_params(new_step)
 
-    def log_accept(self, prev_step, prev_step_res, new_step, new_step_res):
+    def log_accept(
+            self,
+            prev_step: np.ndarray,
+            prev_step_res: smMALAResult,
+            new_step: np.ndarray,
+            new_step_res: smMALAResult) -> float:
+        """Give acceptance ratio of accepting the new step.
+
+        Args:
+            prev_step (np.ndarray): the previous step
+            prev_step_res (smMALAResult): Results of the previous step.
+            new_step (np.ndarray): the new step
+            new_step_res (smMALAResult): Results of the new step.
+
+        Returns:
+            float: the acceptance ratio
+        """
+
         # p(theta' | D) q(theta | theta') pr(theta') / p(theta|D) q(theta' | theta) pr(theta)
 
         acceptance_ratio = (
@@ -98,7 +197,28 @@ class smMALAKernel(Kernel):
 
         return acceptance_ratio
 
-    def one_step(self, prev_step, prev_step_res, return_info=False):
+    def one_step(
+        self,
+        prev_step: np.ndarray,
+        prev_step_res: smMALAResult,
+        return_info: bool = False
+    ) -> tuple[np.ndarray, smMALAResult] | tuple[np.ndarray, smMALAResult, float, int]:
+        """Perform one smMALA step.
+
+        Args:
+            prev_step (np.ndarray): the previous step
+            prev_step_res (smMALAResult): Results of the previous
+                step.
+            return_info (bool, optional): Whether to return the
+                acceptance ratio and acceptance indicator. Defaults to
+                False.
+
+        Returns:
+            tuple[np.ndarray, smMALAResult] |
+            tuple[np.ndarray, smMALAResult, float, int]: The new step
+                and its results, and optionally acceptance ratio and
+                acceptance indicator.
+        """
 
         new_step, new_step_res = self.propose(prev_step, prev_step_res)
         acceptance_ratio = self.log_accept(
@@ -114,7 +234,16 @@ class smMALAKernel(Kernel):
                 return (prev_step, prev_step_res, acceptance_ratio, 0)
             return (prev_step, prev_step_res)
 
-    def get_params(self, initial_step):
+    def get_params(self, initial_step: np.ndarray) -> smMALAResult:
+        """Get the results for a given step.
+
+        Args:
+            initial_step (np.ndarray): The step for which to get the
+                results.
+
+        Returns:
+            smMALAResult: The results for the given step.
+        """
 
         # Get gradient, likelihood and G matrix for new theta
         log_likelihood_grad, log_likelihood = self.grad_and_log_likelihood(
@@ -126,7 +255,7 @@ class smMALAKernel(Kernel):
 
         fisher = get_fisher(
             log_theta=initial_step.reshape(self.shape),
-            omhn=self.omhn,
+            omhn=self.shape[0] == self.shape[1] + 1,
             use_cuda=self.use_cuda,
         )
         G = fisher - self.log_prior_hessian(initial_step)
@@ -146,14 +275,14 @@ class smMALAKernel(Kernel):
         )
         mu = initial_step.flatten() + 0.5 * self.step_size * y
 
-        return self.Result(
-            log_likelihood,
-            log_prior,
-            log_posterior_grad,
-            G,
-            cholesky,
-            mu,
-            det_sqrt,
+        return smMALAResult(
+            log_likelihood=log_likelihood,
+            log_prior=log_prior,
+            log_posterior_grad=log_posterior_grad,
+            G=G,
+            cholesky=cholesky,
+            mu=mu,
+            det_sqrt=det_sqrt,
         )
 
     def log_q(
@@ -163,34 +292,75 @@ class smMALAKernel(Kernel):
         det_sqrt_G: float,
         mu: np.ndarray,
     ) -> float:
-        """Compute the logarithm of the proposal distribution density q(theta_new | theta) for the MMALA algorithm.
-        This is according to https://en.wikipedia.org/wiki/Multivariate_normal_distribution#Density_function.
+        """Compute the logarithm of the proposal distribution density
+            q(theta_new | theta) for the smMALA algorithm.
+            #Density_function.
+            This is according to https://en.wikipedia.org/wiki/Multivariate_normal_distribution
 
         Args:
-            theta_new (np.ndarray): New proposed theta
+            theta_proposed (np.ndarray): New proposed theta
             G (np.ndarray): Metric tensor w.r.t. the old theta
-            det_sqrt_G (float): Square root of the determinant of the metric
-            tensor w.r.t. the old theta
-            mu (np.ndarray): Mean of the proposal distribution w.r.t. the
-            old theta
+            det_sqrt_G (float): Square root of the determinant of the
+                metric tensor w.r.t. the old theta
+            mu (np.ndarray): Mean of the proposal distribution w.r.t.
+                the old theta
 
         Returns:
-            float: The logarithm of the proposal distribution q(theta_new | theta) density
+            float: The logarithm of the proposal distribution
+                q(theta_new | theta) density
         """
-        # we can leave out the constant factor (2 * np.pi) ** (n_events**2 )
-        # in the denominator, as well as the scaling STEP_SIZE ** (n_events**2)
+        # we can leave out the constant factor
+        # (2 * np.pi) ** (n_events**2 )
+        # in the denominator, as well as the scaling
+        # STEP_SIZE ** (n_events**2)
         # 1/sqrt(det(G^-1)) = sqrt(det(G))
         return -0.5 * (theta_proposed - mu).T @ G @ (
             theta_proposed - mu
         ) / self.step_size + np.log(det_sqrt_G)
 
 
-class MALAKernel(Kernel):
+class MALAResult(NamedTuple):
+    """Results for one smMALAKernel step.
 
-    Result = collections.namedtuple(
-        "MALAResult",
-        ["log_likelihood", "log_prior", "mu"],
-    )
+    Args:
+        log_likelihood (float): log-likelihood of the current step
+        log_prior (float): log-prior of the current step
+        mu (np.ndarray): mean of the proposal distribution at the
+            current step
+    """
+    log_likelihood: float
+    log_prior: float
+    mu: np.ndarray
+
+
+class MALAKernel(Kernel):
+    """Class for kernel used in the Metropolis-Adjusted Langevin
+    Algorithm. Extends Kernel.
+
+    Attributes:
+        step_size (float): step size for the MALA sampling.
+        grad_and_log_likelihood (tuple[Callable[[np.ndarray], tuple[np.ndarray, float]]]):
+            function that takes a flattened (!) log_theta matrix and
+            returns a tuple of the gradient of the log-likelihood and
+            the log-likelihood itself.
+
+            **Important**: Here, the likelihood should *not* be
+            normalized by the number of samples like
+            in Schill et al. (2019)
+        log_prior: Callable[[np.ndarray], float]: function that takes a
+            flattened (!) log_theta matrix and returns the log-prior.
+            This corresponds to the negative penalty term times lambda,
+            multiplied by the number of samples, if applicable.
+        log_prior_grad: Callable[[np.ndarray], np.ndarray]: function
+            that takes a flattened (!) log_theta matrix and returns the
+            gradient of the log-prior.
+        shape: tuple[int, int]: the shape of the log_theta matrix, i.e.
+            (n_events + 1, n_events) for oMHN and (n_events, n_events)
+            for cMHN.
+        rng: np.random.Generator | None = None: random number generator
+            to be used for sampling. If None, a new RNG will be created.
+
+    """
 
     def __init__(
         self,
@@ -208,14 +378,41 @@ class MALAKernel(Kernel):
         self.step_size = step_size
         self.log_prior_grad = log_prior_grad
 
-    def propose(self, prev_step, prev_step_res):
+    def propose(self, prev_step: np.ndarray, prev_step_res: MALAResult
+                ) -> tuple[np.ndarray, MALAResult]:
+        """Propose a new step based on the previous step and its 
+        results.
 
+        Args:
+            prev_step (np.array): the previous step
+            prev_step_res (MALAResult): Results of the previous step.
+
+        Returns:
+            tuple[np.ndarray, MALAResult]: the new step and its
+            results.
+        """
         z = self.rng.normal(size=self.size)
         new_step = prev_step_res.mu + np.sqrt(self.step_size) * z
 
         return new_step, self.get_params(new_step)
 
-    def log_accept(self, prev_step, prev_step_res, new_step, new_step_res):
+    def log_accept(
+            self,
+            prev_step: np.ndarray,
+            prev_step_res: MALAResult,
+            new_step: np.ndarray,
+            new_step_res: MALAResult) -> float:
+        """Give acceptance ratio of accepting the new step.
+
+        Args:
+            prev_step (np.ndarray): the previous step
+            prev_step_res (MALAResult): Results of the previous step.
+            new_step (np.ndarray): the new step
+            new_step_res (MALAResult): Results of the new step.
+
+        Returns:
+            float: the acceptance ratio
+        """
         # p(theta' | D) q(theta | theta') pr(theta') /
         # p(theta|D) q(theta' | theta) pr(theta)
 
@@ -236,8 +433,27 @@ class MALAKernel(Kernel):
 
         return acceptance_ratio
 
-    def one_step(self, prev_step, prev_step_res, return_info=False):
+    def one_step(
+        self,
+        prev_step: np.ndarray,
+        prev_step_res: MALAResult,
+        return_info: bool = False
+    ) -> tuple[np.ndarray, MALAResult] | tuple[np.ndarray, MALAResult, float, int]:
+        """Perform one MALA step.
 
+        Args:
+            prev_step (np.ndarray): the previous step
+            prev_step_res (MALAResult): Results of the previous step.
+            return_info (bool, optional): Whether to return the
+                acceptance ratio and acceptance indicator. Defaults to
+                False.
+
+        Returns:
+            tuple[np.ndarray, MALAResult] |
+            tuple[np.ndarray, MALAResult, float, int]: The new step and
+                its results, and optionally acceptance ratio and
+                acceptance indicator.
+        """
         new_step, new_step_res = self.propose(prev_step, prev_step_res)
         acceptance_ratio = self.log_accept(
             prev_step, prev_step_res, new_step, new_step_res
@@ -252,7 +468,16 @@ class MALAKernel(Kernel):
                 return (prev_step, prev_step_res, acceptance_ratio, 0)
             return (prev_step, prev_step_res)
 
-    def get_params(self, initial_step):
+    def get_params(self, initial_step: np.ndarray) -> MALAResult:
+        """Get the results for a given step.
+
+        Args:
+            initial_step (np.ndarray): The step for which to get the
+                results.
+
+        Returns:
+            MALAResult: The results for the given step.
+        """
 
         log_likelihood_grad, log_likelihood = self.grad_and_log_likelihood(
             initial_step)
@@ -261,10 +486,10 @@ class MALAKernel(Kernel):
 
         mu = initial_step.flatten() \
             + 0.5 * self.step_size * log_posterior_grad.flatten()
-        return self.Result(
-            log_likelihood,
-            self.log_prior(initial_step.reshape(self.shape)),
-            mu,
+        return MALAResult(
+            log_likelihood=log_likelihood,
+            log_prior=self.log_prior(initial_step.reshape(self.shape)),
+            mu=mu,
         )
 
     def log_q(
@@ -290,19 +515,45 @@ class MALAKernel(Kernel):
         """
         # we can leave out the constant factor (2 * np.pi) ** (n_events**2 )
         # in the denominator, as well as the scaling STEP_SIZE ** (n_events**2)
-        # 1/sqrt(det(G^-1)) = sqrt(det(G))
         return -0.5 * np.sum((theta_proposed - mu) ** 2) / self.step_size
 
 
-class RWMKernel(Kernel):
+class RWMResult(NamedTuple):
+    """Results for one RWMKernel step.
 
-    Result = collections.namedtuple(
-        "RWMResult",
-        [
-            "log_likelihood",
-            "log_prior",
-        ],
-    )
+    Args:
+        log_likelihood (float): log-likelihood of the current step
+        log_prior (float): log-prior of the current step
+    """
+    log_likelihood: float
+    log_prior: float
+
+
+class RWMKernel(Kernel):
+    """Class for kernel used in simplified Random-Walk Metropolis.
+    Extends Kernel.
+
+    Attributes:
+        grad_and_log_likelihood (tuple[Callable[[np.ndarray], tuple[np.ndarray, float]]]):
+            function that takes a flattened (!) log_theta matrix and
+            returns a tuple of the gradient of the log-likelihood and
+            the log-likelihood itself.
+
+            **Important**: Here, the likelihood should *not* be
+            normalized by the number of samples like
+            in Schill et al. (2019)
+        log_prior: Callable[[np.ndarray], float]: function that takes a
+            flattened (!) log_theta matrix and returns the log-prior.
+            This corresponds to the negative penalty term times lambda,
+            multiplied by the number of samples, if applicable.
+        scale (float): scale of the normal proposal distribution.
+        shape: tuple[int, int]: the shape of the log_theta matrix, i.e.
+            (n_events + 1, n_events) for oMHN and (n_events, n_events)
+            for cMHN.
+        rng: np.random.Generator | None = None: random number generator
+            to be used for sampling. If None, a new RNG will be created.
+
+    """
 
     def __init__(
         self,
@@ -312,31 +563,24 @@ class RWMKernel(Kernel):
         shape: tuple[int, int],
         rng: np.random.Generator | None = None,
     ):
-        """Initialize the Random Walk Metropolis kernel.
-
-        Parameters
-        ----------
-        data : np.ndarray
-            The data to be used for the sampling.
-        sigma : np.ndarray
-            The covariance matrix for the proposal distribution.
-        prior : dict
-            The prior distribution parameters.
-        cmhn : bool, optional
-            Whether to use the CMHN model. Defaults to False.
-        rng : np.random.Generator | None, optional
-            The random number generator. If None, a new RNG will be created.
-            Defaults to None.
-        """
-
         super().__init__(grad_and_log_likelihood=grad_and_log_likelihood,
                          log_prior=log_prior, shape=shape, rng=rng)
 
         self.step_size = step_size
         self.sigma = step_size * np.eye(self.size)
 
-    def propose(self, prev_step, prev_step_res):
+    def propose(self, prev_step: np.ndarray, prev_step_res: RWMResult):
+        """Propose a new step based on the previous step and its
+        results.
 
+        Args:
+            prev_step (np.array): the previous step
+            prev_step_res (RWMResult): Results of the previous step.
+
+        Returns:
+            tuple[np.ndarray, RWMResult]: the new step and its
+            results.
+        """
         # draw random normal number
         new_step = self.rng.normal(
             loc=prev_step,
@@ -346,8 +590,24 @@ class RWMKernel(Kernel):
 
         return new_step, self.get_params(new_step)
 
-    def log_accept(self, prev_step, prev_step_res, new_step, new_step_res):
-        # p(theta' | D) q(theta | theta') pr(theta') / p(theta|D) q(theta' | theta) pr(theta)
+    def log_accept(
+            self,
+            prev_step: np.ndarray,
+            prev_step_res: RWMResult,
+            new_step: np.ndarray,
+            new_step_res: RWMResult) -> float:
+        """Give acceptance ratio of accepting the new step.
+
+        Args:
+            prev_step (np.ndarray): the previous step
+            prev_step_res (RWMResult): Results of the previous step.
+            new_step (np.ndarray): the new step
+            new_step_res (RWMResult): Results of the new step.
+
+        Returns:
+            float: the acceptance ratio
+        """
+        # p(theta' | D) pr(theta') / p(theta|D) pr(theta)
 
         acceptance_ratio = (
             new_step_res.log_likelihood
@@ -358,7 +618,27 @@ class RWMKernel(Kernel):
 
         return acceptance_ratio
 
-    def one_step(self, prev_step, prev_step_res, return_info=False):
+    def one_step(
+            self,
+            prev_step: np.ndarray,
+            prev_step_res: RWMResult,
+            return_info: bool = False):
+        """Perform one RWM step.
+
+        Args:
+            prev_step (np.ndarray): the previous step
+            prev_step_res (RWMResult): Results of the previous
+                step.
+            return_info (bool, optional): Whether to return the
+                acceptance ratio and acceptance indicator. Defaults to
+                False.
+
+        Returns:
+            tuple[np.ndarray, RWMResult] |
+            tuple[np.ndarray, RWMResult, float, int]: The new step
+                and its results, and optionally acceptance ratio and
+                acceptance indicator.
+        """
 
         new_step, new_step_res = self.propose(prev_step, prev_step_res)
         acceptance_ratio = self.log_accept(
@@ -375,7 +655,15 @@ class RWMKernel(Kernel):
             return (prev_step, prev_step_res)
 
     def get_params(self, initial_step):
+        """Get the results for a given step.
 
+        Args:
+            initial_step (np.ndarray): The step for which to get the
+                results.
+
+        Returns:
+            RWMResult: The results for the given step.
+        """
         return self.Result(
             self.grad_and_log_likelihood(initial_step.reshape(self.shape))[1],
             self.log_prior(initial_step.reshape(self.shape))

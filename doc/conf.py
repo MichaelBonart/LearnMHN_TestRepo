@@ -1,3 +1,5 @@
+import collections
+
 # Configuration file for the Sphinx documentation builder.
 #
 # For the full list of built-in configuration values, see the documentation:
@@ -21,6 +23,18 @@ extensions = [
 
 templates_path = ['_templates']
 exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store', 'setup']
+
+
+# -- Skip the additional config of classes inheriting from namedtuple --------
+
+def skip_namedtuple_aliases(app, what, name, obj, skip, options):
+    if type(obj) is collections._tuplegetter:
+        return True
+    return skip
+
+
+def setup(app):
+    app.connect("autodoc-skip-member", skip_namedtuple_aliases)
 
 
 

@@ -1,3 +1,8 @@
+"""
+This submodule contains TODO
+"""
+
+
 # author: Y. Linda Hu
 
 from ..optimizers import Optimizer, oMHNOptimizer, cMHNOptimizer, Penalty
@@ -44,9 +49,6 @@ class MCMC:
             sampling. Defaults to MALAKernel.
         seed (int, optional): Random seed for reproducibility. Defaults
             to 0.
-
-    Returns:
-        _type_: _description_
     """
 
     import arviz
