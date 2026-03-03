@@ -27,15 +27,7 @@ exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store', 'setup']
 
 # -- Skip the additional config of classes inheriting from namedtuple --------
 
-def skip_namedtuple_aliases(app, what, name, obj, skip, options):
-    if type(obj) is collections._tuplegetter:
-        return True
-    return skip
-
-
-def setup(app):
-    app.connect("autodoc-skip-member", skip_namedtuple_aliases)
-
+napoleon_attr_annotations = False
 
 
 # -- Options for HTML output -------------------------------------------------

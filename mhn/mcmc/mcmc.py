@@ -1,5 +1,7 @@
 """
-This submodule contains TODO
+This submodule contains the MCMC class that runs Markov Chain Monte
+Carlo sampling for MHNs.
+
 """
 
 
@@ -11,6 +13,7 @@ from ..training.likelihood_cmhn \
     import gradient_and_score as cmhn_grad_and_log_likelihood
 from ..training.likelihood_omhn \
     import gradient_and_score as omhn_grad_and_log_likelihood
+from ..training.state_containers import StateContainer
 from numpy.typing import ArrayLike
 from typing import Callable, Literal, overload
 import numpy as np
@@ -21,18 +24,18 @@ import arviz
 
 
 class MCMC:
-    """Markov chain Monte Carlo sampler for oMHN and cMHN models.
+    """Markov chain Monte Carlo sampler for MHN.
 
     Args:
         optimizer (Optimizer, optional): Trained Optimizer.
-        mhn (oMHN | cMHN, optional): MHN model. Required if optimizer is 
-            not provided.
+        mhn_model (oMHN | cMHN, optional): MHN model. Required if
+            optimizer is not provided.
         data (ArrayLike | StateContainer, optional): Data used to train
             the MHN model. Required if optimizer is not provided.
-        penalty (Penalty | tuple[Callable[[np.ndarray], float],
-            Callable[[np.ndarray], np.ndarray]], optional): Penalty used
-            during training. If not Penalty, penalty[0] gives the
-            penalty (unscaled by lambda), penalty[1] its gradient and 
+        penalty (Penalty | tuple[Callable[[np.ndarray], float], Callable[[np.ndarray], np.ndarray]], optional):
+            Penalty used during training. If not Penalty, penalty[0]
+            gives the penalty (unscaled by lambda), penalty[1] its
+            gradient and 
             penalty[2] its Hessian. For a RWM kernel, only penalty[0] is
             required. For a MALA kernel, penalty[0] and penalty[1] are
             required. For a smMALA kernel, all three are required. If
@@ -40,26 +43,27 @@ class MCMC:
             if applicable,) its derivatives have to be set manually with
             `Sampler.log_prior`, `Sampler.log_prior_grad`, and
             `Sampler.log_prior_hessian`.
+        log_prior: TODO
         n_chains (int, optional): Number of parallel chains to run.
             Defaults to 10.
-        epsilon (float | None | Literal["auto"], optional): Step size
-            for MCMC sampler. If "auto", step size is set automatically
-            inferred at the first run. Defaults to "auto".
+        step_size: TODO
         kernel_class (Kernel, optional): Kernel class to use for MCMC
             sampling. Defaults to MALAKernel.
+        thin (int, optional): Thinning factor for MCMC sampling.
+            Defaults to 100.
         seed (int, optional): Random seed for reproducibility. Defaults
-            to 0.
+            to None.
     """
 
     import arviz
 
-    kernel_args = {
+    _kernel_args = {
         MALAKernel: ["log_prior_grad"],
         smMALAKernel: ["log_prior_grad", "log_prior_hessian"],
         RWMKernel: []
     }
 
-    penalties = {
+    _penalty_dict = {
         cMHNOptimizer: {
             Penalty.L1: (penalties_cmhn.l1, penalties_cmhn.l1_),
             Penalty.L2: (penalties_cmhn.l2, penalties_cmhn.l2_),
@@ -78,60 +82,66 @@ class MCMC:
         },
     }
 
-    @overload
-    def __init__(self, *, optimizer: ..., n_chains: ... = ...,
-                 step_size: ... = ...,
-                 kernel_class: MALAKernel | RWMKernel = ..., thin: ... = ...,
-                 seed: ... = ...,): ...
+    # @overload
+    # def __init__(self, *, optimizer: ..., n_chains: ... = ...,
+    #              step_size: ... = ...,
+    #              kernel_class: MALAKernel | RWMKernel = ..., thin: ... = ...,
+    #              seed: ... = ...,): ...
 
-    @overload
-    def __init__(self, *, mhn_model: ..., data: ...,
-                 penalty: Penalty | Callable[[np.ndarray], float],
-                 n_chains: ... = ..., step_size: ... = ...,
-                 kernel_class: Literal[RWMKernel] = ..., thin: ... = ...,
-                 seed: ... = ...): ...
+    # @overload
+    # def __init__(self, *, mhn_model: ..., data: ...,
+    #              penalty: Penalty | Callable[[np.ndarray], float],
+    #              n_chains: ... = ..., step_size: ... = ...,
+    #              kernel_class: Literal[RWMKernel] = ..., thin: ... = ...,
+    #              seed: ... = ...): ...
 
-    @overload
-    def __init__(self, *, mhn_model: ..., data: ...,
-                 log_prior: Callable[[np.ndarray], float],
-                 n_chains: ... = ..., step_size: ... = ...,
-                 kernel_class: Literal[RWMKernel] = ..., thin: ... = ...,
-                 seed: ... = ...): ...
+    # @overload
+    # def __init__(self, *, mhn_model: ..., data: ...,
+    #              log_prior: Callable[[np.ndarray], float],
+    #              n_chains: ... = ..., step_size: ... = ...,
+    #              kernel_class: Literal[RWMKernel] = ..., thin: ... = ...,
+    #              seed: ... = ...): ...
 
-    @overload
-    def __init__(self, *, mhn_model: ..., data: ...,
-                 penalty: Penalty | tuple[
-                     Callable[[np.ndarray], float],
-                     Callable[[np.ndarray], np.ndarray]],
-                 n_chains: ... = ..., step_size: ... = ...,
-                 kernel_class: Literal[MALAKernel] = ..., thin: ... = ...,
-                 seed: ... = ...): ...
+    # @overload
+    # def __init__(self, *, mhn_model: ..., data: ...,
+    #              penalty: Penalty | tuple[
+    #                  Callable[[np.ndarray], float],
+    #                  Callable[[np.ndarray], np.ndarray]],
+    #              n_chains: ... = ..., step_size: ... = ...,
+    #              kernel_class: Literal[MALAKernel] = ..., thin: ... = ...,
+    #              seed: ... = ...): ...
 
-    @overload
-    def __init__(self, *, mhn_model: ..., data: ...,
-                 log_prior: tuple[
-                     Callable[[np.ndarray], float],
+    # @overload
+    # def __init__(self, *, mhn_model: ..., data: ...,
+    #              log_prior: tuple[
+    #                  Callable[[np.ndarray], float],
 
-                     Callable[[np.ndarray], np.ndarray],],
-                 n_chains: ... = ..., step_size: ... = ...,
-                 kernel_class: Literal[MALAKernel] = ..., thin: ... = ...,
-                 seed: ... = ...): ...
+    #                  Callable[[np.ndarray], np.ndarray],],
+    #              n_chains: ... = ..., step_size: ... = ...,
+    #              kernel_class: Literal[MALAKernel] = ..., thin: ... = ...,
+    #              seed: ... = ...): ...
 
-    @overload
-    def __init__(self, *, mhn_model: ..., data: ...,
-                 log_prior: tuple[
-                     Callable[[np.ndarray], float],
-                     Callable[[np.ndarray], np.ndarray],
-                     Callable[[np.ndarray], np.ndarray],],
-                 n_chains: ... = ..., step_size: ... = ...,
-                 kernel_class: Literal[smMALAKernel] = ..., thin: ... = ...,
-                 seed: ... = ...): ...
+    # @overload
+    # def __init__(self, *, mhn_model: ..., data: ...,
+    #              log_prior: tuple[
+    #                  Callable[[np.ndarray], float],
+    #                  Callable[[np.ndarray], np.ndarray],
+    #                  Callable[[np.ndarray], np.ndarray],],
+    #              n_chains: ... = ..., step_size: ... = ...,
+    #              kernel_class: Literal[smMALAKernel] = ..., thin: ... = ...,
+    #              seed: ... = ...): ...
 
-    def __init__(self, *, optimizer: Optimizer = None,
-                 mhn_model: oMHN | cMHN | None = None, data=None, penalty=None,
-                 log_prior=None, n_chains=10,
+    def __init__(self, *,
+                 optimizer: Optimizer = None,
+                 mhn_model: oMHN | cMHN | None = None,
+                 data=np.ndarray | StateContainer | None,
+                 penalty=None,
+                 log_prior=None,
+                 n_chains=10,
                  step_size: Literal["auto"] | float | ArrayLike = "auto",
-                 kernel_class=MALAKernel, thin: int = 100, seed: int | None = None,) -> None:
+                 kernel_class=MALAKernel,
+                 thin: int = 100,
+                 seed: int | None = None,) -> None:
         if optimizer is None:
             if mhn_model is None or data is None:
                 raise ValueError(
@@ -168,7 +178,7 @@ class MCMC:
         # Transform penalty/prior into length-3 tuples
 
         if isinstance(penalty, Penalty):
-            penalty = self.penalties[type(optimizer)][penalty]
+            penalty = self._penalty_dict[type(optimizer)][penalty]
 
         if penalty is None:
             penalty = (None, None, None)
@@ -245,7 +255,13 @@ class MCMC:
 
         self.shape = optimizer.result.log_theta.shape
 
-    def _get_grad_and_log_likelihood(self):
+    def _get_grad_and_log_likelihood(
+            self) -> Callable[[np.ndarray], tuple[np.ndarray, float]]:
+        """
+        Get the grad_and_log_likelihood function for an MHN. The default
+        gradient and likelihood in the mhn.training module are
+        normalized by the dataset size. This is reversed here
+        """
 
         n_samples = self.optimizer._data.get_data_shape()[0]
 
@@ -274,8 +290,8 @@ class MCMC:
     def _get_log_prior(
         self, penalty: Callable[[np.ndarray], float]
     ) -> Callable[[np.ndarray], float]:
-        """Get the log_prior as n_samples * lam * penalty, where lam is
-        the regularization strength from MHN training.
+        """Get the log_prior as -lam * penalty, where lam is the
+        regularization strength from MHN training.
 
         Args:
             penalty (Callable[[np.ndarray], float]): The penalty
@@ -290,12 +306,12 @@ class MCMC:
     def _get_log_prior_grad(
         self, penalty_grad: Callable[[np.ndarray], np.ndarray]
     ) -> Callable[[np.ndarray], np.ndarray]:
-        """Get the log_prior_grad as n_samples * lam * penalty_grad,
-        where lam is the regularization strength from MHN training.
+        """Get the log_prior_grad as -lam * penalty_grad, where lam is
+        the regularization strength from MHN training.
 
         Args:
             penalty_grad (Callable[[np.ndarray], np.ndarray]): The
-            gradient of the penalty function used for MHN training.
+                gradient of the penalty function used for MHN training.
         """
 
         def log_prior_grad(log_theta: np.ndarray) -> float:
@@ -306,13 +322,12 @@ class MCMC:
     def _get_log_prior_hessian(
         self, penalty_hessian: Callable[[np.ndarray], np.ndarray]
     ) -> Callable[[np.ndarray], np.ndarray]:
-        """Get the log_prior_hessian as
-        n_samples * lam * penalty_hessian, where lam is the
-        regularization strength from MHN training.
+        """Get the log_prior_hessian as -lam * penalty_hessian, where
+        lam is the regularization strength from MHN training.
 
         Args:
             penalty_hessian (Callable[[np.ndarray], np.ndarray]): The
-            hessian of the penalty function used for MHN training.
+                hessian of the penalty function used for MHN training.
         """
 
         def log_prior_hessian(log_theta: np.ndarray) -> float:
@@ -353,7 +368,7 @@ class MCMC:
                 "(n_chains, 1, m) with m the number of parameters. "
             )
 
-    def walker(
+    def _walker(
         self,
         prev_step: np.ndarray,
         walker_id: int,
@@ -370,7 +385,7 @@ class MCMC:
             log_prior=self.log_prior,
             shape=self.shape,
             **{arg: getattr(self, arg)
-                for arg in self.kernel_args[self.kernel_class]},
+                for arg in self._kernel_args[self.kernel_class]},
         )
 
         log_thetas = np.empty((n_steps // self.thin, self.size))
@@ -395,7 +410,7 @@ class MCMC:
 
         with mp.Pool() as pool:
             results = pool.starmap(
-                self.walker,
+                self._walker,
                 [(
                     self.log_thetas[i, -1, :] if self.log_thetas.shape[1] > 0
                     else self.initial_step[i, 0, :],

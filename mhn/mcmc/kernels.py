@@ -5,9 +5,8 @@ base kernel base class. Those are responsible for the actual steps of
 MCMC.
 """
 # author(s): Y. Linda Hu
+import scipy.integrate
 
-
-import collections
 import numpy as np
 import scipy.linalg
 from typing import Callable
@@ -78,10 +77,13 @@ class smMALAResult(NamedTuple):
 
 
 class smMALAKernel(Kernel):
-    """Class for kernel used in simplified manifold MALA. Extends Kernel.
+    """Class for kernel used in simplified manifold MALA. Extends
+    Kernel.
 
     Attributes:
-        step_size (float): step size for the smMALA sampling.
+
+        step_size (float): step size for the smMALA sampling. This is
+            the :math:`\\epsilon^2/4` in the proposal distribution.
         grad_and_log_likelihood (tuple[Callable[[np.ndarray], tuple[np.ndarray, float]]]):
             function that takes a flattened (!) log_theta matrix and
             returns a tuple of the gradient of the log-likelihood and
@@ -135,6 +137,16 @@ class smMALAKernel(Kernel):
                 ) -> tuple[np.ndarray, smMALAResult]:
         """Propose a new step based on the previous step and its
         results.
+        This is done according to
+
+        :math:`\\mathcal N\\bigg(\\theta + \\frac{\\epsilon}{2} G(\\theta)^{-1} \\frac{\\partial \\log p(\\theta)}{\\partial \\theta}, \\epsilon G(\\theta)^{-1}\\bigg)`
+        
+        where
+        
+        :math:`G(\\theta) = I(\\theta) - H(\\log \\pi(\\theta))`
+        
+        with :math:`I` the Fisher information matrix and :math:`H` the Hessian of the log-prior.
+
 
         Args:
             prev_step (np.array): the previous step
@@ -163,6 +175,13 @@ class smMALAKernel(Kernel):
             new_step: np.ndarray,
             new_step_res: smMALAResult) -> float:
         """Give acceptance ratio of accepting the new step.
+
+        This is given by
+
+        :math:`\\frac{p(\\theta' | D) q(\\theta | \\theta')\\pi(\\theta')}{p(\\theta|D) q(\\theta' | \\theta) \\pi(\\theta)}`
+        
+        where :math:`p(.| D)` is the likelihood, :math:`\\pi(.)` is the
+        prior and :math:`q(.|.)` is the proposal distribution.
 
         Args:
             prev_step (np.ndarray): the previous step
@@ -294,8 +313,8 @@ class smMALAKernel(Kernel):
     ) -> float:
         """Compute the logarithm of the proposal distribution density
             q(theta_new | theta) for the smMALA algorithm.
-            #Density_function.
             This is according to https://en.wikipedia.org/wiki/Multivariate_normal_distribution
+            #Density_function.
 
         Args:
             theta_proposed (np.ndarray): New proposed theta
@@ -572,6 +591,8 @@ class RWMKernel(Kernel):
     def propose(self, prev_step: np.ndarray, prev_step_res: RWMResult):
         """Propose a new step based on the previous step and its
         results.
+        The proposal is made according to a normal distribution centered
+        at the previous step with standard deviation `step_size`.
 
         Args:
             prev_step (np.array): the previous step
@@ -596,7 +617,10 @@ class RWMKernel(Kernel):
             prev_step_res: RWMResult,
             new_step: np.ndarray,
             new_step_res: RWMResult) -> float:
-        """Give acceptance ratio of accepting the new step.
+        """Give acceptance ratio of accepting the new step. This is
+        given by
+        p(new_step | D) pr(new_step) / p(prev_step|D) pr(prev_step)
+        where p(.| D) is the likelihood and pr(.) is the prior.
 
         Args:
             prev_step (np.ndarray): the previous step
@@ -636,8 +660,8 @@ class RWMKernel(Kernel):
         Returns:
             tuple[np.ndarray, RWMResult] |
             tuple[np.ndarray, RWMResult, float, int]: The new step
-                and its results, and optionally acceptance ratio and
-                acceptance indicator.
+            and its results, and optionally acceptance ratio and
+            acceptance indicator.
         """
 
         new_step, new_step_res = self.propose(prev_step, prev_step_res)
