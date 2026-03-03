@@ -14,45 +14,75 @@ from ..training.likelihood_cmhn \
 from ..training.likelihood_omhn \
     import gradient_and_score as omhn_grad_and_log_likelihood
 from ..training.state_containers import StateContainer
-from numpy.typing import ArrayLike
-from typing import Callable, Literal, overload
+from typing import Callable, Literal
 import numpy as np
 import multiprocessing as mp
 from .kernels import Kernel, smMALAKernel, RWMKernel, MALAKernel
 from ..training import penalties_cmhn, penalties_omhn
-import arviz
 
 
 class MCMC:
     """Markov chain Monte Carlo sampler for MHN.
 
+    The simplest way to create an MCMC sampler is to provide a trained
+    ``Optimizer``. This already includes the dataset, the regularization
+    strength lambda, the penalty and its gradient.
+
+    This is enough to create an RWM or MALA sampler. For an smMALA
+    sampler, the Hessian of the penalty is also needed, which is not
+    stored in the optimizer. In this case, please provide the penalty
+    and its derivatives directly via ``penalty`` or ``log_prior``.
+
+    Alternatively, you can create an MCMC sampler from a trained MHN
+    model, the data used to train it, and the penalty used for training.
+    Depending on the Kernel (RWM, MALA, or smMALA), you have to provide
+    the penalty, its gradient, and its Hessian,
+
+    - by providing ``penalty`` either as a :class:`Penalty`
+      (only for RWM/MALA) or as a tuple of callables of length 1, 2,
+      or 3, or
+    - by providing ``log_prior`` as a tuple of callables of length 1,
+      2, or 3.
+    The difference between ``penalty`` and ``log_prior`` is that the
+    former is unscaled by :math:`\\lambda` and positive (such as it is
+    stored in an ``Optimizer`` object), while the latter is scaled by
+    lambda and negative.
+
+    When using a custom penalty or prior, initial chain values must be
+    set manually by setting ``Sampler.initial_step`` to an array of
+    shape (n_chains, 1, m) with m the number of parameters.
+
     Args:
         optimizer (Optimizer, optional): Trained Optimizer.
-        mhn_model (oMHN | cMHN, optional): MHN model. Required if
-            optimizer is not provided.
-        data (ArrayLike | StateContainer, optional): Data used to train
-            the MHN model. Required if optimizer is not provided.
+        mhn_model (oMHN | cMHN, optional): MHN model.
+        data (np.ndarray | StateContainer, optional): Data used to train
+            the MHN model.
         penalty (Penalty | tuple[Callable[[np.ndarray], float], Callable[[np.ndarray], np.ndarray]], optional):
-            Penalty used during training. If not Penalty, penalty[0]
-            gives the penalty (unscaled by lambda), penalty[1] its
-            gradient and 
-            penalty[2] its Hessian. For a RWM kernel, only penalty[0] is
-            required. For a MALA kernel, penalty[0] and penalty[1] are
-            required. For a smMALA kernel, all three are required. If
-            neither optimizer not penalty are provided, a log prior (and
-            if applicable,) its derivatives have to be set manually with
-            `Sampler.log_prior`, `Sampler.log_prior_grad`, and
-            `Sampler.log_prior_hessian`.
-        log_prior: TODO
+            Penalty used during training. If not Penalty, ``penalty[0]``
+            gives the penalty (positive and unscaled by
+            :math:`\\lambda`), ``penalty[1]`` its gradient and
+            ``penalty[2]`` its Hessian.
+        log_prior: Log-prior used during training. ``log_prior[0]``
+            gives the log_prior (negative and scaled by 
+            :math:`\\lambda`), ``penalty[1]`` its gradient and
+            ``penalty[2]`` its Hessian.
         n_chains (int, optional): Number of parallel chains to run.
-            Defaults to 10.
-        step_size: TODO
+            Defaults to ``10``.
+        step_size: (Literal["auto"] | int | np.ndarray | ) Stepsize of the Kernel. See the documentation of the
+            kernels (:class:`RWMKernel<mhn.mcmc.kernels.RWMKernel>`,
+            :class:`MALAKernel<mhn.mcmc.kernels.MALAKernel>`,
+            :class:`smMALAKernel<mhn.mcmc.kernels.smMALAKernel>`) for
+            more details. If ``"auto"``, the stepsize is tuned
+            automatically before the first run using
+            :func:`tune_stepsize`. If array, every chain uses a
+            different step size. Defaults to ``"auto"``.
         kernel_class (Kernel, optional): Kernel class to use for MCMC
-            sampling. Defaults to MALAKernel.
+            sampling. Must be one of ``RWMKernel``, ``MALAKernel``,
+            ```smMALAKernel``. Defaults to ``MALAKernel``.
         thin (int, optional): Thinning factor for MCMC sampling.
-            Defaults to 100.
+            Defaults to ``100``.
         seed (int, optional): Random seed for reproducibility. Defaults
-            to None.
+            to ``None``.
     """
 
     import arviz
@@ -82,66 +112,19 @@ class MCMC:
         },
     }
 
-    # @overload
-    # def __init__(self, *, optimizer: ..., n_chains: ... = ...,
-    #              step_size: ... = ...,
-    #              kernel_class: MALAKernel | RWMKernel = ..., thin: ... = ...,
-    #              seed: ... = ...,): ...
+    def __init__(
+            self, *,
+            optimizer: Optimizer = None,
+            mhn_model: oMHN | cMHN | None = None,
+            data: np.ndarray | StateContainer | None = None,
+            penalty: Penalty | tuple[Callable] | None = None,
+            log_prior: tuple[Callable] | None = None,
+            n_chains: int = 10,
+            step_size: Literal["auto"] | float | np.ndarray = "auto",
+            kernel_class: Kernel = MALAKernel,
+            thin: int = 100,
+            seed: int | None = None,) -> None:
 
-    # @overload
-    # def __init__(self, *, mhn_model: ..., data: ...,
-    #              penalty: Penalty | Callable[[np.ndarray], float],
-    #              n_chains: ... = ..., step_size: ... = ...,
-    #              kernel_class: Literal[RWMKernel] = ..., thin: ... = ...,
-    #              seed: ... = ...): ...
-
-    # @overload
-    # def __init__(self, *, mhn_model: ..., data: ...,
-    #              log_prior: Callable[[np.ndarray], float],
-    #              n_chains: ... = ..., step_size: ... = ...,
-    #              kernel_class: Literal[RWMKernel] = ..., thin: ... = ...,
-    #              seed: ... = ...): ...
-
-    # @overload
-    # def __init__(self, *, mhn_model: ..., data: ...,
-    #              penalty: Penalty | tuple[
-    #                  Callable[[np.ndarray], float],
-    #                  Callable[[np.ndarray], np.ndarray]],
-    #              n_chains: ... = ..., step_size: ... = ...,
-    #              kernel_class: Literal[MALAKernel] = ..., thin: ... = ...,
-    #              seed: ... = ...): ...
-
-    # @overload
-    # def __init__(self, *, mhn_model: ..., data: ...,
-    #              log_prior: tuple[
-    #                  Callable[[np.ndarray], float],
-
-    #                  Callable[[np.ndarray], np.ndarray],],
-    #              n_chains: ... = ..., step_size: ... = ...,
-    #              kernel_class: Literal[MALAKernel] = ..., thin: ... = ...,
-    #              seed: ... = ...): ...
-
-    # @overload
-    # def __init__(self, *, mhn_model: ..., data: ...,
-    #              log_prior: tuple[
-    #                  Callable[[np.ndarray], float],
-    #                  Callable[[np.ndarray], np.ndarray],
-    #                  Callable[[np.ndarray], np.ndarray],],
-    #              n_chains: ... = ..., step_size: ... = ...,
-    #              kernel_class: Literal[smMALAKernel] = ..., thin: ... = ...,
-    #              seed: ... = ...): ...
-
-    def __init__(self, *,
-                 optimizer: Optimizer = None,
-                 mhn_model: oMHN | cMHN | None = None,
-                 data=np.ndarray | StateContainer | None,
-                 penalty=None,
-                 log_prior=None,
-                 n_chains=10,
-                 step_size: Literal["auto"] | float | ArrayLike = "auto",
-                 kernel_class=MALAKernel,
-                 thin: int = 100,
-                 seed: int | None = None,) -> None:
         if optimizer is None:
             if mhn_model is None or data is None:
                 raise ValueError(
@@ -336,7 +319,16 @@ class MCMC:
         return log_prior_hessian
 
     def _take_initial_step(self):
+        """Take the initial step for MCMC sampling. Only works if
+        penalty is one of the predefined penalties for
+        ``mhn.training.optimizer``.
 
+        Raises:
+            NotImplementedError: When using a custom penalty, initial
+                chain values must be set manually by setting
+                ``Sampler.initial_step`` to an array of shape
+                (n_chains, 1, m) with m the number of parameters.
+        """
         if self.initial_step is not None:
             return
 
@@ -374,7 +366,21 @@ class MCMC:
         walker_id: int,
         n_steps: int,
         verbose: bool,
-    ):
+    ) -> tuple[int, np.ndarray, np.random.Generator]:
+        """Internal walker function. Performs the MCMC sampling for one
+        chain.
+
+        Args:
+            prev_step (np.ndarray): Initial value of one chain
+            walker_id (int): ID of the chain.
+            n_steps (int): Number of steps to run.
+            verbose (bool): Whether to print progress.
+
+        Returns:
+            tuple[int, np.ndarray, np.random.Generator]: A tuple of the
+            walker ID, the log_thetas sampled by this walker, and the
+            random number generator state after sampling.
+        """
         prev_n = self.log_thetas.shape[1]
 
         kernel = self.kernel_class(
@@ -407,7 +413,12 @@ class MCMC:
         return walker_id, log_thetas, kernel.rng
 
     def _run(self, n_steps: int, verbose: bool):
+        """Internal run function. Calls walker function in parallel.
 
+        Args:
+            n_steps (int): Number of steps to run.
+            verbose (bool): Whether to print progress.
+        """
         with mp.Pool() as pool:
             results = pool.starmap(
                 self._walker,
@@ -433,9 +444,38 @@ class MCMC:
 
     def run(self,
             stopping_crit: Literal["r_hat", "ESS"] | Callable | None = "r_hat",
-            max_steps: int | None = None, check_interval: int | None = None,
-            burn_in: int | float = 0.2, verbose: bool = True):
+            max_steps: int | None = None, check_interval: int | None = 1000,
+            burn_in: int | float = 0.2, verbose: bool = True) -> np.ndarray:
+        """Run MCMC sampling until the stopping criterion is met or the
+        maximum number of steps is reached.
 
+        Args:
+            stopping_crit (Literal["r_hat", "ESS"] | Callable | None, optional):
+                The stopping criterion to use. If ``"r_hat"``, runs
+                until the the Gelman-Rubin potential scale reduction
+                factor :math:`\\hat R` is below 1.01. If ``"ESS"``, runs
+                until the effective sample size (ESS) is above 100. If a
+                callable, it should take in the log_thetas and return a
+                boolean indicating whether to stop. If ``None``, runs
+                until ``max_steps`` is reached. Burn-in is discarded
+                before checking the stopping criterion and only every
+                ``check_interval`` steps. Defaults to ``"r_hat"``.
+            max_steps (int | None, optional): Maximum number of steps to
+                run. If ``None``, runs a maximum of 1,000,000 steps for
+                RWM and MALA kernels and 100,000 steps for smMALA
+                kernels. Defaults to None.
+            check_interval (int | None, optional): Number of steps
+                between checking the stopping criterion. Defaults to
+                1000.
+            burn_in (int | float, optional): Number of steps to discard
+                as burn-in. If a float, it is interpreted as a fraction
+                of the total steps. Defaults to 0.2.
+            verbose (bool, optional): Whether to print progress.
+                Defaults to True.
+
+        Returns:
+            np.ndarray: The log-thetas for each chain.
+        """
         if stopping_crit == "r_hat":
             def stopping_crit(log_thetas):
                 if log_thetas.shape[1] < self.n_chains:
@@ -461,8 +501,6 @@ class MCMC:
             else None)
 
         max_steps = (max_steps // self.thin) * self.thin
-
-        check_interval = check_interval or 1000
 
         if isinstance(self.step_size, str) and self.step_size == "auto":
             if verbose:
@@ -495,7 +533,23 @@ class MCMC:
 
         return sampler
 
-    def acceptance(self, burn_in: int | float = 0.2, chain_id: int | None = None):
+    def acceptance(
+            self, burn_in: int | float = 0.2, chain_id: int | None = None
+    ) -> np.ndarray | float:
+        """Calculate the acceptance rate for the chains.
+
+        Args:
+            burn_in (int | float, optional): Number of steps to discard
+                as burn-in. If a float, it is interpreted as a fraction
+                of the total steps. Defaults to 0.2.
+            chain_id (int | None, optional): Chain ID to return
+                acceptance rate for. If None, returns acceptance rates
+                for all chains. Defaults to None.
+
+        Returns:
+            np.ndarray | float: The acceptance rate(s) for the specified
+            chain(s).
+        """
         if isinstance(burn_in, float):
             burn_in = int(burn_in * self.log_thetas.shape[1])
 
@@ -531,7 +585,8 @@ class MCMC:
 
     def tune_stepsize(self, n_steps: int = 100, burn_in: float | int = 0.6,
                       target_acceptance: float | Literal["auto"] = "auto",
-                      max_trials: int = 10, verbose: bool = True, tol: float = 0.02,
+                      max_trials: int = 10, verbose: bool = True,
+                      tol: float = 0.02,
                       ) -> float:
         """Automatically infer an appropriate step size epsilon for MCMC
         sampling.
@@ -546,6 +601,14 @@ class MCMC:
                 Target acceptance rate. If "auto", set to 0.234 for RWM
                 kernels, 0.574 for MALA kernels and 0.7 for smMALA
                 kernels. Defaults to "auto".
+            max_trials (int, optional): Maximum number of trials to run.
+                Defaults to 10.
+            verbose (bool, optional): Whether to print progress.
+                Defaults to True.
+            tol (float, optional): Tolerance for acceptance rate. If the
+                acceptance rate is within ``tol`` of the target
+                acceptance rate, the step size is accepted. Defaults to
+                0.02.
 
         Returns:
             float: Inferred step size epsilon.
@@ -615,7 +678,21 @@ class MCMC:
                      else step_sizes[argbest] * 10),
                     n_parallel)
 
-    def rhat(self, burn_in: int | float = 0.2, **kwargs):
+    def rhat(self, burn_in: int | float = 0.2, **kwargs) -> np.ndarray:
+        """Calculate the Gelman-Rubin potential scale reduction factor
+        :math:`\\hat R`.
+
+        Args:
+            burn_in (int | float, optional): Number of steps to discard
+                as burn-in. If a float, it is interpreted as a fraction
+                of the total steps. Defaults to 0.2.
+            **kwargs: Additional keyword arguments to pass to
+                :func:`arviz.rhat`. See the ArviZ documentation for more
+                details.
+
+        Returns:
+            np.ndarray: The Gelman-Rubin R-hat values for each parameter.
+        """
         if isinstance(burn_in, float):
             burn_in = int(burn_in * self.log_thetas.shape[1])
 
@@ -625,6 +702,19 @@ class MCMC:
             arviz.convert_to_inference_data(log_thetas), **kwargs).x)
 
     def ess(self, burn_in: int | float = 0.2, **kwargs):
+        """Calculate the effective sample size (ESS).
+
+        Args:
+            burn_in (int | float, optional): Number of steps to discard
+                as burn-in. If a float, it is interpreted as a fraction
+                of the total steps. Defaults to 0.2.
+            **kwargs: Additional keyword arguments to pass to
+                :func:`arviz.ess`. See the ArviZ documentation for more
+                details.
+
+        Returns:
+            np.ndarray: The effective sample size for each parameter.
+        """
         if isinstance(burn_in, float):
             burn_in = int(burn_in * self.log_thetas.shape[1])
 
