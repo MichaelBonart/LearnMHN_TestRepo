@@ -25,7 +25,7 @@ class Kernel:
 
             **Important**: Here, the likelihood should *not* be
             normalized by the number of samples like
-            in Schill et al. (2019)
+            in Schill et al. (2019).
         log_prior: Callable[[np.ndarray], float]: function that takes a
             flattened (!) log_theta matrix and returns the log-prior.
             This corresponds to the negative penalty term times lambda,
@@ -278,7 +278,16 @@ class smMALAKernel(Kernel):
             use_cuda=self.use_cuda,
         )
         G = fisher - self.log_prior_hessian(initial_step)
-        cholesky = scipy.linalg.cholesky(G, lower=True)
+        try:
+            cholesky = scipy.linalg.cholesky(G, lower=True)
+        except np.linalg.LinAlgError as e:
+            raise np.linalg.LinAlgError(
+                "The cholesky decomposition of the metric tensor" \
+                "failed. This likely means that the metric tensor is " \
+                "not positive definite. Check that the hessian of " \
+                "the log-prior is negative definite and that the " \
+                "and, if necessary, decrease the stepsize."
+            ) from e
         det_sqrt = np.diag(cholesky).prod()
 
         # Get mu, the mean of the proposal distribution w.r.t. the new theta
@@ -297,7 +306,7 @@ class smMALAKernel(Kernel):
         return smMALAResult(
             log_likelihood=log_likelihood,
             log_prior=log_prior,
-            log_posterior_grad=log_posterior_grad,
+            gradient=log_posterior_grad,
             G=G,
             cholesky=cholesky,
             mu=mu,
@@ -688,7 +697,7 @@ class RWMKernel(Kernel):
         Returns:
             RWMResult: The results for the given step.
         """
-        return self.Result(
+        return RWMResult(
             self.grad_and_log_likelihood(initial_step.reshape(self.shape))[1],
             self.log_prior(initial_step.reshape(self.shape))
         )
