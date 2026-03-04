@@ -19,6 +19,7 @@ import numpy as np
 import multiprocessing as mp
 from .kernels import Kernel, smMALAKernel, RWMKernel, MALAKernel
 from ..training import penalties_cmhn, penalties_omhn
+import warnings
 
 
 class MCMC:
@@ -94,7 +95,7 @@ class MCMC:
     }
 
     _penalty_dict = {
-        cMHNOptimizer: {
+        "cmhn": {
             Penalty.L1: (penalties_cmhn.l1, penalties_cmhn.l1_),
             Penalty.L2: (penalties_cmhn.l2, penalties_cmhn.l2_),
             Penalty.SYM_SPARSE: (
@@ -102,7 +103,7 @@ class MCMC:
                 penalties_cmhn.sym_sparse_deriv,
             ),
         },
-        oMHNOptimizer: {
+        "omhn": {
             Penalty.L1: (penalties_omhn.l1, penalties_omhn.l1_),
             Penalty.L2: (penalties_omhn.l2, penalties_omhn.l2_),
             Penalty.SYM_SPARSE: (
@@ -125,89 +126,126 @@ class MCMC:
             thin: int = 100,
             seed: int | None = None,) -> None:
 
+        # Model initialization
+
         if optimizer is None:
-            if mhn_model is None or data is None:
+
+            self.optimizer = None
+
+            if mhn_model is None or data is None or\
+                    (penalty is None and log_prior is None):
                 raise ValueError(
-                    "Either optimizer or (mhn_model, data) must be provided."
+                    "When optimizer is not provided, mhn_model, data," +
+                    "and penalty or log_prior must be provided."
                 )
-            assert mhn_model.meta is not None \
-                and mhn_model.meta.get("lambda") is not None, (
-                    "MHN metadata is needed for MCMC sampling."
-                    "Load a trained MHN model with metadata or manually "
-                    "set mhn_model.meta['lambda'].")
-            optimizer = oMHNOptimizer() if isinstance(mhn_model, oMHN) \
-                else cMHNOptimizer()
-            optimizer.load_data_matrix(data)
-            optimizer._result = mhn_model
-            optimizer._penalty = None
+
+            if not isinstance(data, StateContainer):
+                data = StateContainer(data)
+
+            self.data = data
+            self.n_samples = self.data.get_data_shape()[0]
+            self.shape = mhn_model.log_theta.shape
+            self.size = mhn_model.log_theta.size
+
+            if isinstance(mhn_model, oMHN):
+                self.omhn = True
+            elif isinstance(mhn_model, cMHN):
+                self.omhn = False
+            else:
+                raise ValueError("mhn_model must be an oMHN or cMHN "
+                                 "instance.")
+            assert hasattr(mhn_model, "meta"), "mhn_model must be " \
+                "supplied with metadata."
+            try:
+                self.lam = mhn_model.meta["lambda"] * self.n_samples
+            except AttributeError:
+                raise ValueError("mhn_model metadata must include "
+                                 "lambda.")
 
         else:
+
+            if isinstance(optimizer, oMHNOptimizer):
+                self.omhn = True
+            elif isinstance(optimizer, cMHNOptimizer):
+                self.omhn = False
+            else:
+                raise ValueError("optimizer must be an oMHNOptimizer "
+                                 "or cMHNOptimizer instance.")
+            self.optimizer = optimizer
             if mhn_model is not None or data is not None:
                 raise ValueError(
-                    "Provide either optimizer or (mhn_model, data)"
+                    "When optimizer is provided, mhn_model and data "
+                    "must not be provided."
                 )
-            assert optimizer.result is not None, (
-                "Optimizer must be trained before passing to Sampler."
-            )
 
-            # TODO if penalty is not None:
-            #     if penalty != optimizer.penalty:
-            #         raise ValueError(
-            #             "When providing a trained optimizer, do not provide "
-            #             "a penalty."
-            #         )
-            penalty = optimizer._penalty
+            try:
+                self.lam = optimizer.result.meta["lambda"] * \
+                    optimizer._data.get_data_shape()[0]
+                self.data = optimizer._data
+                self.shape = optimizer.result.log_theta.shape
+                self.size = optimizer.result.log_theta.size
+            except AttributeError:
+                raise ValueError(
+                    "optimizer must have loaded data and must have "
+                    "been trained.")
 
-        # Transform penalty/prior into length-3 tuples
+            self.data = None
+            self.n_samples = self.data.get_data_shape()[0]
 
-        if isinstance(penalty, Penalty):
-            penalty = self._penalty_dict[type(optimizer)][penalty]
+            if penalty is None and log_prior is None:
 
-        if penalty is None:
-            penalty = (None, None, None)
-        penalty = tuple(penalty)
-        if len(penalty) < 3:
-            penalty = penalty + (None,) * (3 - len(penalty))
-        self._penalty = penalty
+                if not hasattr(optimizer, "_penalty")\
+                        or optimizer._penalty is None:
+                    raise ValueError(
+                        "optimizer does not have a penalty, provide "
+                        "either penalty or log_prior")
 
-        if log_prior is None:
+                else:
+
+                    if kernel_class == smMALAKernel:
+                        raise ValueError(
+                            "When using smMALA kernel, the penalty "
+                            "included in the optimizer is not "
+                            "sufficient, because no Hessian is "
+                            "stored. Provide penalty or log_prior "
+                            "including its 1st and 2nd derivative.")
+                    else:
+                        penalty = optimizer._penalty
+
+            else:
+
+                if not hasattr(optimizer, "_penalty")\
+                        or optimizer._penalty is None:
+
+                    warnings.warn(
+                        "The optimizers penalty is overwritten by the "
+                        "provided penalty or log_prior."
+                    )
+
+        if penalty is not None and log_prior is not None:
+            raise ValueError("Provide only one of penalty or log_prior.")
+
+        self.penalty = penalty
+        if penalty is not None:
+
+            if isinstance(penalty, Penalty):
+                penalty = self._penalty_dict[
+                    "omhn" if self.omhn else "cmhn"][penalty]
+
             log_prior = (None, None, None)
-        log_prior = tuple(log_prior)
-        if len(log_prior) < 3:
-            log_prior = log_prior + (None,) * (3 - len(log_prior))
-        self._log_prior = log_prior
 
-        # Set log_prior and its derivatives
-
-        if (log_prior[0] is None) + (penalty[0] is None) != 1:
-            raise ValueError(
-                "Provide either penalty or log_prior, but not both."
-            )
         self.log_prior = log_prior[0] or self._get_log_prior(
             penalty[0])
-
         if kernel_class in [MALAKernel, smMALAKernel]:
-            if (log_prior[1] is None) + (penalty[1] is None) != 1:
-                raise ValueError(
-                    "Provide either gradient of penalty or gradient of "
-                    "log_prior, but not both."
-                )
             self.log_prior_grad = log_prior[1] or self._get_log_prior_grad(
                 penalty[1])
+            if kernel_class == smMALAKernel:
+                self.log_prior_hessian = log_prior[2] or \
+                    self._get_log_prior_hessian(penalty[2])
 
-        if kernel_class == smMALAKernel:
-            if (log_prior[2] is None) + (penalty[2] is None) != 1:
-                raise ValueError(
-                    "Provide either Hessian of penalty or Hessian of "
-                    "log_prior, but not both."
-                )
-            self.log_prior_hessian = log_prior[2] or \
-                self._get_log_prior_hessian(penalty[2])
-
-        self.optimizer = optimizer
+        # Sampler initialization
 
         self.n_chains = n_chains
-        self.size = optimizer.result.log_theta.size
         self.log_thetas = np.array([]).reshape(n_chains, 0, self.size)
         self.step_size = step_size
         self.thin = thin
@@ -222,19 +260,8 @@ class MCMC:
             )
             for sese in seed_sequence.spawn(self.n_chains)
         ]
-        self.init_dist = None
         self.grad_and_log_likelihood = self._get_grad_and_log_likelihood()
-
         self.kernel_class = kernel_class
-        if kernel_class in [MALAKernel, smMALAKernel]:
-            self._log_prior_grad = None
-        if kernel_class == smMALAKernel:
-            self._log_prior_hessian = None
-
-        self.n_samples = self.optimizer._data.get_data_shape()[0]
-        self.lam = self.optimizer.result.meta["lambda"] * self.n_samples
-
-        self.shape = optimizer.result.log_theta.shape
 
     def _get_grad_and_log_likelihood(
             self) -> Callable[[np.ndarray], tuple[np.ndarray, float]]:
@@ -244,17 +271,15 @@ class MCMC:
         normalized by the dataset size. This is reversed here
         """
 
-        n_samples = self.optimizer._data.get_data_shape()[0]
-
-        if isinstance(self.optimizer, oMHNOptimizer):
+        if isinstance(self.omhn):
 
             def grad_and_log_likelihood(log_theta: np.ndarray) \
                     -> tuple[np.ndarray, float]:
                 grad, log_likelihood = omhn_grad_and_log_likelihood(
                     omega_theta=log_theta.reshape(self.shape),
-                    mutation_data=self.optimizer._data,
+                    mutation_data=self.data,
                 )
-                return n_samples * grad, n_samples * log_likelihood
+                return self.n_samples * grad, self.n_samples * log_likelihood
 
         else:
 
@@ -262,9 +287,9 @@ class MCMC:
                     -> tuple[np.ndarray, float]:
                 grad, log_likelihood = cmhn_grad_and_log_likelihood(
                     log_theta=log_theta.flatten(),
-                    data_matrix=self.optimizer._data,
+                    data_matrix=self.data,
                 )
-                return n_samples * grad, n_samples * log_likelihood
+                return self.n_samples * grad, self.n_samples * log_likelihood
 
         return grad_and_log_likelihood
 
@@ -626,9 +651,13 @@ class MCMC:
             if verbose:
                 print(f"Trial {trial+1}: step_sizes={step_sizes}")
 
+            model = (oMHN if self.omhn else cMHN)(
+                log_theta=np.zeros(self.shape),
+                meta={"lambda": self.lam / self.n_samples},
+            )
             temp_sampler = MCMC(
-                mhn_model=self.optimizer.result,
-                data=self.optimizer.training_data,
+                mhn_model=model,
+                data=self.data.data,
                 n_chains=n_parallel * 3,
                 step_size=step_sizes.repeat(3),
                 penalty=self._penalty,
