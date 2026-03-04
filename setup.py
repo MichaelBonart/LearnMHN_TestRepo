@@ -189,7 +189,8 @@ setup(
         f'scipy>={scipy.__version__}, <1.15.0',
         'pandas>=1.5.3',
         'tqdm>=4.66.3',
-        'matplotlib>=3.6.0'
+        'matplotlib>=3.6.0',
+        'arviz~=0.23.0'
     ],
     python_requires='>=3.8, <3.13'
 )
