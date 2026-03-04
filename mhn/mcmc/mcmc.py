@@ -528,7 +528,7 @@ class MCMC:
         if isinstance(self.step_size, str) and self.step_size == "auto":
             if verbose:
                 print("Tuning step size...")
-            self.tune_stepsize()
+            self.tune_stepsize(verbose=verbose)
             if verbose:
                 print(f"Using step size: {self.step_size}")
 
