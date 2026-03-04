@@ -20,6 +20,7 @@ import multiprocessing as mp
 from .kernels import Kernel, smMALAKernel, RWMKernel, MALAKernel
 from ..training import penalties_cmhn, penalties_omhn
 import warnings
+import arviz
 
 
 class MCMC:
@@ -56,8 +57,7 @@ class MCMC:
     Args:
         optimizer (Optimizer, optional): Trained Optimizer.
         mhn_model (oMHN | cMHN, optional): MHN model.
-        data (np.ndarray | StateContainer, optional): Data used to train
-            the MHN model.
+        data (np.ndarray, optional): Data used to train the MHN model.
         penalty (Penalty | tuple[Callable[[np.ndarray], float], Callable[[np.ndarray], np.ndarray]], optional):
             Penalty used during training. If not Penalty, ``penalty[0]``
             gives the penalty (positive and unscaled by
@@ -85,8 +85,6 @@ class MCMC:
         seed (int, optional): Random seed for reproducibility. Defaults
             to ``None``.
     """
-
-    import arviz
 
     _kernel_args = {
         MALAKernel: ["log_prior_grad"],
@@ -117,7 +115,7 @@ class MCMC:
             self, *,
             optimizer: Optimizer = None,
             mhn_model: oMHN | cMHN | None = None,
-            data: np.ndarray | StateContainer | None = None,
+            data: np.ndarray | None = None,
             penalty: Penalty | tuple[Callable] | None = None,
             log_prior: tuple[Callable] | None = None,
             n_chains: int = 10,
@@ -139,10 +137,9 @@ class MCMC:
                     "and penalty or log_prior must be provided."
                 )
 
-            if not isinstance(data, StateContainer):
-                data = StateContainer(data)
-
-            self.data = data
+            self._bin_datamatrix = data
+            self.data = StateContainer(data) if isinstance(
+                data, np.ndarray) else data
             self.n_samples = self.data.get_data_shape()[0]
             self.shape = mhn_model.log_theta.shape
             self.size = mhn_model.log_theta.size
@@ -182,6 +179,7 @@ class MCMC:
                 self.lam = optimizer.result.meta["lambda"] * \
                     optimizer._data.get_data_shape()[0]
                 self.data = optimizer._data
+                self._bin_datamatrix = optimizer._bin_datamatrix
                 self.shape = optimizer.result.log_theta.shape
                 self.size = optimizer.result.log_theta.size
             except AttributeError:
@@ -189,7 +187,6 @@ class MCMC:
                     "optimizer must have loaded data and must have "
                     "been trained.")
 
-            self.data = None
             self.n_samples = self.data.get_data_shape()[0]
 
             if penalty is None and log_prior is None:
@@ -214,18 +211,20 @@ class MCMC:
 
             else:
 
-                if not hasattr(optimizer, "_penalty")\
-                        or optimizer._penalty is None:
+                if hasattr(optimizer, "_penalty")\
+                        and optimizer._penalty is not None:
 
                     warnings.warn(
                         "The optimizers penalty is overwritten by the "
-                        "provided penalty or log_prior."
+                        "provided penalty or log_prior.", UserWarning
                     )
 
         if penalty is not None and log_prior is not None:
             raise ValueError("Provide only one of penalty or log_prior.")
 
-        self.penalty = penalty
+        self._penalty = penalty
+        self._log_prior = log_prior
+
         if penalty is not None:
 
             if isinstance(penalty, Penalty):
@@ -234,6 +233,9 @@ class MCMC:
 
             log_prior = (None, None, None)
 
+        log_prior = log_prior or (None, None, None)
+
+        self.log_prior_grad, self.log_prior_hessian = None, None
         self.log_prior = log_prior[0] or self._get_log_prior(
             penalty[0])
         if kernel_class in [MALAKernel, smMALAKernel]:
@@ -271,7 +273,7 @@ class MCMC:
         normalized by the dataset size. This is reversed here
         """
 
-        if isinstance(self.omhn):
+        if self.omhn:
 
             def grad_and_log_likelihood(log_theta: np.ndarray) \
                     -> tuple[np.ndarray, float]:
@@ -355,20 +357,17 @@ class MCMC:
         if self.initial_step is not None:
             return
 
-        if self._penalty[0] in [
-            penalties_omhn.l2,
-            penalties_cmhn.l2,
-        ]:
+        if self._penalty in [Penalty.L2, self._penalty_dict["omhn" if self.omhn else "cmhn"][Penalty.L2]]:
             self.initial_step = self.rng.normal(
                 size=(self.n_chains, 1, self.size),
                 scale=1 / np.sqrt(2 * self.lam),
             )
 
-        elif self._penalty[0] in [
-            penalties_omhn.l1,
-            penalties_omhn.sym_sparse,
-            penalties_cmhn.l1,
-            penalties_cmhn.sym_sparse,
+        elif self._penalty in [
+            Penalty.L1,
+            Penalty.SYM_SPARSE,
+            self._penalty_dict["omhn" if self.omhn else "cmhn"][Penalty.L1],
+            self._penalty_dict["omhn" if self.omhn else "cmhn"][Penalty.SYM_SPARSE]
         ]:
             self.initial_step = self.rng.laplace(
                 size=(self.n_chains, 1, self.size),
@@ -547,15 +546,6 @@ class MCMC:
 
         return self.log_thetas
 
-    def __getstate__(self):
-        sampler = self.__dict__.copy()
-        sampler.pop("grad_and_log_likelihood")
-        sampler.pop("log_prior")
-        sampler.pop("log_prior_grad", None)
-        sampler.pop("log_prior_hessian", None)
-
-        return sampler
-
     def acceptance(
             self, burn_in: int | float = 0.2, chain_id: int | None = None
     ) -> np.ndarray | float:
@@ -593,18 +583,30 @@ class MCMC:
         return np.array(acceptance_rates) if chain_id is None \
             else acceptance_rates[0]
 
+    def __getstate__(self):
+        sampler = self.__dict__.copy()
+        sampler.pop("grad_and_log_likelihood")
+        sampler.pop("log_prior")
+        sampler.pop("log_prior_grad", None)
+        sampler.pop("log_prior_hessian", None)
+        sampler.pop("data", None)
+
+        return sampler
+
     def __setstate__(self, sampler):
 
         self.__dict__.update(sampler)
         self.grad_and_log_likelihood = self._get_grad_and_log_likelihood()
-        self.log_prior = self._log_prior[0] or self._get_log_prior(
+        log_prior = self._log_prior or (None, None, None)
+        self.log_prior = log_prior[0] or self._get_log_prior(
             self._penalty[0])
         if self.kernel_class in [MALAKernel, smMALAKernel]:
-            self.log_prior_grad = self._log_prior[1] or self._get_log_prior_grad(
+            self.log_prior_grad = log_prior[1] or self._get_log_prior_grad(
                 self._penalty[1])
         if self.kernel_class == smMALAKernel:
-            self.log_prior_hessian = self._log_prior[2] or \
+            self.log_prior_hessian = log_prior[2] or \
                 self._get_log_prior_hessian(self._penalty[2])
+        self.data = StateContainer(sampler["_bin_datamatrix"])
 
     def tune_stepsize(self, n_steps: int = 100, burn_in: float | int = 0.6,
                       target_acceptance: float | Literal["auto"] = "auto",
@@ -657,7 +659,7 @@ class MCMC:
             )
             temp_sampler = MCMC(
                 mhn_model=model,
-                data=self.data.data,
+                data=self._bin_datamatrix,
                 n_chains=n_parallel * 3,
                 step_size=step_sizes.repeat(3),
                 penalty=self._penalty,
@@ -667,13 +669,15 @@ class MCMC:
                 seed=self.rng.integers(0, 2**32, dtype=np.uint32)
             )
 
+            temp_sampler._penalty = self._penalty
+
             if self.initial_step is not None:
                 temp_sampler.initial_step = np.stack(
                     [self.initial_step[i % self.n_chains, :, :]
                      for i in range(n_parallel * 3)])
 
             try:
-                temp_sampler.run(max_steps=n_steps, verbose=True,
+                temp_sampler.run(max_steps=n_steps, verbose=verbose,
                                  stopping_crit=None)
             except ZeroDivisionError as e:
                 if verbose:

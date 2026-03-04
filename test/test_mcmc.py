@@ -1,40 +1,24 @@
 """
 Unit tests for the mhn.mcmc module.
-
-This test suite covers:
-  - Kernel classes (RWMKernel, MALAKernel, smMALAKernel)
-  - MCMC sampler initialization and configuration
-  - MCMC sampling with different kernels and parameters
-  - Convergence diagnostics (rhat, ESS, acceptance rate)
-  - Reproducibility with seeds
-  - Pickling/serialization support
-  - Custom penalties and priors
-
-Test Classes:
-  - TestKernels: Unit tests for all kernel classes (RWM, MALA, smMALA)
-  - TestMCMC: Integration tests for MCMC sampler with different kernels and configurations
 """
 
 import unittest
-import warnings
 import numpy as np
 import mhn
-from mhn.full_state_space import Likelihood, ModelConstruction
-from mhn.training.likelihood_cmhn import gradient_and_score
 from mhn.training.state_containers import StateContainer
-from mhn import mcmc
 from mhn.mcmc.kernels import RWMKernel, MALAKernel, smMALAKernel
-import arviz
-import tempfile
-import os
+from mhn.mcmc.mcmc import MCMC
+from mhn.optimizers import Penalty
 import scipy.stats
 
-data = np.loadtxt("../demo/LUAD_n12.csv", delimiter=",",
+data = np.loadtxt("demo/LUAD_n12.csv", delimiter=",",
                   skiprows=1, dtype=np.int32)[:100, :3]
 data_container = StateContainer(data)
 data_size = data.shape[0]
 optimizer = mhn.optimizers.oMHNOptimizer().load_data_matrix(data)
-lam = optimizer.lambda_from_cv()
+np.random.seed(0)
+lam, df = optimizer.lambda_from_cv(return_lambda_scores=True)
+print(df)
 model = optimizer.train(lam=lam)
 shape = (4, 3)
 size = 12
@@ -613,573 +597,169 @@ class TestKernels(unittest.TestCase):
         self.assertFalse(np.allclose(new_step1, new_step2))
 
 
-# class TestMCMC(unittest.TestCase):
-#     """Tests for MCMC class."""
-
-#     def test_init_from_optimizer_rwm(self):
-#         """Test initialization of MCMC from an optimizer with RWM kernel."""
-#         sampler = mcmc.mcmc.MCMC(
-#             optimizer=self.optimizer,
-#             kernel_class=RWMKernel,
-#             n_chains=2
-#         )
-#         self.assertEqual(sampler.n_chains, 2)
-#         self.assertEqual(sampler.kernel_class, RWMKernel)
-
-#     def test_init_from_optimizer_mala(self):
-#         """Test initialization of MCMC from an optimizer with MALA kernel."""
-#         sampler = mcmc.mcmc.MCMC(
-#             optimizer=self.optimizer,
-#             kernel_class=MALAKernel,
-#             n_chains=2
-#         )
-#         self.assertEqual(sampler.kernel_class, MALAKernel)
-
-#     def test_init_from_model_and_data(self):
-#         """Test initialization of MCMC from a model and data."""
-#         sampler = mcmc.mcmc.MCMC(
-#             mhn_model=self.model,
-#             data=self.data,
-#             penalty=self.optimizer.penalty,
-#             kernel_class=RWMKernel,
-#             n_chains=2
-#         )
-#         self.assertIsNotNone(sampler.optimizer)
-#         self.assertEqual(sampler.n_chains, 2)
-
-#     def test_init_invalid_args(self):
-#         """Test that proper errors are raised for invalid arguments."""
-#         # Missing data when providing model
-#         with self.assertRaises(ValueError):
-#             mcmc.mcmc.MCMC(mhn_model=self.model)
-
-#         # Providing both optimizer and model
-#         with self.assertRaises(ValueError):
-#             mcmc.mcmc.MCMC(
-#                 optimizer=self.optimizer,
-#                 mhn_model=self.model,
-#                 data=self.data
-#             )
-
-#         with self.assertRaises(ValueError):
-#             mcmc.mcmc.MCMC(
-#                 optimizer=self.optimizer,
-#                 kernel_class=smMALAKernel,
-#                 n_chains=2
-#             )
-
-#     def test_step_size_options(self):
-#         """Test different step size specifications."""
-#         # Fixed step size
-#         sampler1 = mcmc.mcmc.MCMC(
-#             optimizer=self.optimizer,
-#             step_size=0.05,
-#             n_chains=3
-#         )
-#         self.assertEqual(sampler1.step_size, 0.05)
-
-#         # Array of step sizes
-#         step_sizes = np.array([0.01, 0.05, 0.1])
-#         sampler2 = mcmc.mcmc.MCMC(
-#             optimizer=self.optimizer,
-#             step_size=step_sizes,
-#             n_chains=3
-#         )
-#         np.testing.assert_array_equal(sampler2.step_size, step_sizes)
-
-#         # Auto step size
-#         sampler3 = mcmc.mcmc.MCMC(
-#             optimizer=self.optimizer,
-#             step_size="auto",
-#             n_chains=2
-#         )
-#         self.assertEqual(sampler3.step_size, "auto")
-
-#     def test_thin_parameter(self):
-#         """Test thin parameter."""
-#         sampler = mcmc.mcmc.MCMC(
-#             optimizer=self.optimizer,
-#             thin=10,
-#             n_chains=2
-#         )
-#         self.assertEqual(sampler.thin, 10)
-
-#     def test_seed_reproducibility(self):
-#         """Test that seed parameter ensures reproducibility."""
-#         sampler1 = mcmc.mcmc.MCMC(
-#             optimizer=self.optimizer,
-#             step_size=0.01,
-#             seed=42,
-#             n_chains=2,
-#             thin=1
-#         )
-#         sampler1.run(stopping_crit=None, max_steps=10, verbose=False)
-#         samples1 = sampler1.log_thetas.copy()
-
-#         sampler2 = mcmc.mcmc.MCMC(
-#             optimizer=self.optimizer,
-#             step_size=0.01,
-#             seed=42,
-#             n_chains=2,
-#             thin=1
-#         )
-#         sampler2.run(stopping_crit=None, max_steps=10, verbose=False)
-#         samples2 = sampler2.log_thetas.copy()
-
-#         np.testing.assert_array_equal(samples1, samples2)
-
-#     def test_run_rwm_basic(self):
-#         """Test basic MCMC run with RWM kernel."""
-#         sampler = mcmc.mcmc.MCMC(
-#             optimizer=self.optimizer,
-#             kernel_class=RWMKernel,
-#             step_size=0.05,
-#             n_chains=2,
-#             thin=1,
-#             seed=42
-#         )
-#         result = sampler.run(stopping_crit=None, max_steps=10, verbose=False)
-
-#         self.assertEqual(result.shape[0], 2)  # n_chains
-#         self.assertEqual(result.shape[2], sampler.size)  # parameters
-
-#     def test_run_mala_basic(self):
-#         """Test basic MCMC run with MALA kernel."""
-#         sampler = mcmc.mcmc.MCMC(
-#             optimizer=self.optimizer,
-#             kernel_class=MALAKernel,
-#             step_size=0.05,
-#             n_chains=2,
-#             thin=1,
-#             seed=42
-#         )
-#         result = sampler.run(stopping_crit=None, max_steps=10, verbose=False)
-
-#         self.assertEqual(result.shape[0], 2)  # n_chains
-#         self.assertGreater(result.shape[1], 0)  # some samples
-
-#     def test_run_smmala_basic(self):
-#         """Test basic MCMC run with smMALA kernel."""
-#         sampler = mcmc.mcmc.MCMC(
-#             optimizer=self.optimizer,
-#             kernel_class=smMALAKernel,
-#             step_size=0.001,  # Smaller step size for smMALA
-#             n_chains=2,
-#             thin=1,
-#             seed=42
-#         )
-#         try:
-#             result = sampler.run(stopping_crit=None,
-#                                  max_steps=10, verbose=False)
-
-#             self.assertEqual(result.shape[0], 2)  # n_chains
-#             self.assertGreater(result.shape[1], 0)  # some samples
-#         except np.linalg.LinAlgError:
-#             # smMALA may fail with some models if metric tensor not positive definite
-#             pass
-
-#     def test_run_with_max_steps(self):
-#         """Test run with max_steps limit."""
-#         sampler = mcmc.mcmc.MCMC(
-#             optimizer=self.optimizer,
-#             step_size=0.01,
-#             n_chains=2,
-#             thin=2,
-#             seed=42
-#         )
-#         sampler.run(stopping_crit=None, max_steps=20, verbose=False)
-
-#         # Should have at most 20/2 = 10 samples per chain
-#         self.assertLessEqual(sampler.log_thetas.shape[1], 11)
-
-#     def test_rhat_computation(self):
-#         """Test rhat computation."""
-#         sampler = mcmc.mcmc.MCMC(
-#             optimizer=self.optimizer,
-#             step_size=0.01,
-#             n_chains=3,
-#             thin=1,
-#             seed=42
-#         )
-#         sampler.run(stopping_crit=None, max_steps=50, verbose=False)
-
-#         rhat_values = sampler.rhat()
-
-#         # rhat should be array with one value per parameter
-#         self.assertEqual(len(rhat_values), sampler.size)
-#         # All rhat values should be positive
-#         self.assertTrue(np.all(rhat_values > 0))
-
-#     def test_rhat_with_burn_in_int(self):
-#         """Test rhat with integer burn-in."""
-#         sampler = mcmc.mcmc.MCMC(
-#             optimizer=self.optimizer,
-#             step_size=0.01,
-#             n_chains=2,
-#             thin=1,
-#             seed=42
-#         )
-#         sampler.run(stopping_crit=None, max_steps=50, verbose=False)
-
-#         rhat_values = sampler.rhat(burn_in=10)
-
-#         self.assertEqual(len(rhat_values), sampler.size)
-#         self.assertTrue(np.all(rhat_values > 0))
-
-#     def test_rhat_with_burn_in_float(self):
-#         """Test rhat with fractional burn-in."""
-#         sampler = mcmc.mcmc.MCMC(
-#             optimizer=self.optimizer,
-#             step_size=0.01,
-#             n_chains=2,
-#             thin=1,
-#             seed=42
-#         )
-#         sampler.run(stopping_crit=None, max_steps=50, verbose=False)
-
-#         rhat_values = sampler.rhat(burn_in=0.2)
-
-#         self.assertEqual(len(rhat_values), sampler.size)
-
-#     def test_ess_computation(self):
-#         """Test effective sample size computation."""
-#         sampler = mcmc.mcmc.MCMC(
-#             optimizer=self.optimizer,
-#             step_size=0.01,
-#             n_chains=2,
-#             thin=1,
-#             seed=42
-#         )
-#         sampler.run(stopping_crit=None, max_steps=100, verbose=False)
-
-#         ess_values = sampler.ess()
-
-#         # ESS should be array with one value per parameter
-#         self.assertEqual(len(ess_values), sampler.size)
-#         # All ESS values should be positive
-#         self.assertTrue(np.all(ess_values > 0))
-#         # ESS should be less than total samples
-#         total_samples = sampler.log_thetas.shape[0] * \
-#             sampler.log_thetas.shape[1]
-#         self.assertTrue(np.all(ess_values <= total_samples))
-
-#     def test_ess_with_burn_in(self):
-#         """Test ESS with burn-in."""
-#         sampler = mcmc.mcmc.MCMC(
-#             optimizer=self.optimizer,
-#             step_size=0.01,
-#             n_chains=2,
-#             thin=1,
-#             seed=42
-#         )
-#         sampler.run(stopping_crit=None, max_steps=100, verbose=False)
-
-#         ess_values = sampler.ess(burn_in=0.3)
-
-#         self.assertEqual(len(ess_values), sampler.size)
-#         self.assertTrue(np.all(ess_values > 0))
-
-#     def test_acceptance_rate_all_chains(self):
-#         """Test acceptance rate computation for all chains."""
-#         sampler = mcmc.mcmc.MCMC(
-#             optimizer=self.optimizer,
-#             step_size=0.01,
-#             n_chains=3,
-#             thin=1,
-#             seed=42
-#         )
-#         sampler.run(stopping_crit=None, max_steps=50, verbose=False)
-
-#         acceptance_rates = sampler.acceptance()
-
-#         # Should have one rate per chain
-#         self.assertEqual(len(acceptance_rates), 3)
-#         # All rates should be between 0 and 1
-#         self.assertTrue(np.all(acceptance_rates >= 0))
-#         self.assertTrue(np.all(acceptance_rates <= 1))
-
-#     def test_acceptance_rate_single_chain(self):
-#         """Test acceptance rate for a single chain."""
-#         sampler = mcmc.mcmc.MCMC(
-#             optimizer=self.optimizer,
-#             step_size=0.01,
-#             n_chains=3,
-#             thin=1,
-#             seed=42
-#         )
-#         sampler.run(stopping_crit=None, max_steps=50, verbose=False)
-
-#         acceptance_rate = sampler.acceptance(chain_id=0)
-
-#         # Should be a single float
-#         self.assertIsInstance(acceptance_rate, (float, np.floating))
-#         # Should be between 0 and 1
-#         self.assertTrue(0 <= acceptance_rate <= 1)
-
-#     def test_acceptance_rate_with_burn_in(self):
-#         """Test acceptance rate with burn-in."""
-#         sampler = mcmc.mcmc.MCMC(
-#             optimizer=self.optimizer,
-#             step_size=0.01,
-#             n_chains=2,
-#             thin=1,
-#             seed=42
-#         )
-#         sampler.run(stopping_crit=None, max_steps=50, verbose=False)
-
-#         acceptance_rates = sampler.acceptance(burn_in=0.2)
-
-#         self.assertEqual(len(acceptance_rates), 2)
-#         self.assertTrue(np.all(acceptance_rates >= 0))
-#         self.assertTrue(np.all(acceptance_rates <= 1))
-
-#     # def test_convergence_rhat_criterion(self):
-#     #     """Test run with rhat convergence criterion."""
-#     #     sampler = mcmc.mcmc.MCMC(
-#     #         optimizer=self.optimizer,
-#     #         step_size=0.01,
-#     #         n_chains=2,
-#     #         thin=10,
-#     #         seed=42
-#     #     )
-#     #     sampler.run(
-#     #         stopping_crit="r_hat",
-#     #         max_steps=200,
-#     #         check_interval=50,
-#     #         verbose=False
-#     #     )
-
-#     #     # Should have run some iterations
-#     #     self.assertGreater(sampler.log_thetas.shape[1], 0)
-
-#     # def test_convergence_ess_criterion(self):
-#     #     """Test run with ESS convergence criterion."""
-#     #     sampler = mcmc.mcmc.MCMC(
-#     #         optimizer=self.optimizer,
-#     #         step_size=0.01,
-#     #         n_chains=2,
-#     #         thin=10,
-#     #         seed=42
-#     #     )
-#     #     sampler.run(
-#     #         stopping_crit="ESS",
-#     #         max_steps=500,
-#     #         check_interval=50,
-#     #         verbose=False
-#     #     )
-
-#     #     # Should have run some iterations
-#     #     self.assertGreater(sampler.log_thetas.shape[1], 0)
-
-#     def test_smmala_kernel_in_mcmc(self):
-#         """Test smMALA kernel within MCMC framework."""
-#         sampler = mcmc.mcmc.MCMC(
-#             optimizer=self.optimizer,
-#             kernel_class=smMALAKernel,
-#             step_size=0.001,
-#             n_chains=2,
-#             thin=1,
-#             seed=42
-#         )
-
-#         try:
-#             sampler.run(stopping_crit=None, max_steps=10, verbose=False)
-
-#             # Check sampler state
-#             self.assertEqual(sampler.kernel_class, smMALAKernel)
-#             self.assertGreater(sampler.log_thetas.shape[1], 0)
-#             self.assertEqual(sampler.log_thetas.shape[0], 2)  # n_chains
-#         except np.linalg.LinAlgError:
-#             # Expected if Fisher matrix computation fails
-#             pass
-
-#     def test_smmala_with_hessian_penalty(self):
-#         """Test smMALA with Hessian of penalty."""
-#         def custom_penalty(theta):
-#             return np.sum(theta**2)
-
-#         def custom_penalty_grad(theta):
-#             return 2 * theta
-
-#         def custom_penalty_hessian(theta):
-#             return 2 * np.eye(theta.size)
-
-#         sampler = mcmc.mcmc.MCMC(
-#             mhn_model=self.model,
-#             data=self.data,
-#             penalty=(custom_penalty, custom_penalty_grad,
-#                      custom_penalty_hessian),
-#             kernel_class=smMALAKernel,
-#             n_chains=2
-#         )
-
-#         # Set initial step manually
-#         sampler.initial_step = self.optimizer.result.log_theta.flatten().reshape(
-#             2, 1, -1
-#         )
-
-#         try:
-#             sampler.run(stopping_crit=None, max_steps=10, verbose=False)
-
-#             self.assertGreater(sampler.log_thetas.shape[1], 0)
-#         except np.linalg.LinAlgError:
-#             # Expected if metric tensor not positive definite
-#             pass
-
-#     def test_pickle_support(self):
-#         """Test that MCMC sampler can be pickled and unpickled."""
-#         sampler1 = mcmc.mcmc.MCMC(
-#             optimizer=self.optimizer,
-#             step_size=0.01,
-#             n_chains=2,
-#             thin=1,
-#             seed=42
-#         )
-#         sampler1.run(stopping_crit=None, max_steps=20, verbose=False)
-
-#         # Pickle and unpickle
-#         import pickle
-#         with tempfile.NamedTemporaryFile(delete=False) as f:
-#             pickle.dump(sampler1, f)
-#             temp_file = f.name
-
-#         try:
-#             with open(temp_file, 'rb') as f:
-#                 sampler2 = pickle.load(f)
-
-#             # Check that loaded sampler has the same data
-#             np.testing.assert_array_equal(
-#                 sampler1.log_thetas,
-#                 sampler2.log_thetas
-#             )
-#             self.assertEqual(sampler1.n_chains, sampler2.n_chains)
-#         finally:
-#             os.unlink(temp_file)
-
-#     def test_custom_penalty(self):
-#         """Test MCMC with custom penalty."""
-#         def custom_penalty(theta):
-#             return np.sum(np.abs(theta))
-
-#         def custom_penalty_grad(theta):
-#             return np.sign(theta)
-
-#         sampler = mcmc.mcmc.MCMC(
-#             mhn_model=self.model,
-#             data=self.data,
-#             penalty=(custom_penalty, custom_penalty_grad),
-#             kernel_class=MALAKernel,
-#             n_chains=2
-#         )
-
-#         # Need to set initial step manually for custom penalty
-#         sampler.initial_step = self.optimizer.result.log_theta.flatten().reshape(
-#             2, 1, -1
-#         )
-#         sampler.run(stopping_crit=None, max_steps=10, verbose=False)
-
-#         self.assertGreater(sampler.log_thetas.shape[1], 0)
-
-#     def test_initial_step_setting(self):
-#         """Test setting initial step values."""
-#         sampler = mcmc.mcmc.MCMC(
-#             optimizer=self.optimizer,
-#             step_size=0.01,
-#             n_chains=2
-#         )
-
-#         # Set custom initial step
-#         initial_step = np.random.randn(2, 1, sampler.size)
-#         sampler.initial_step = initial_step
-
-#         sampler.run(stopping_crit=None, max_steps=10, verbose=False)
-
-#         # First step should come from initial_step
-#         np.testing.assert_array_almost_equal(
-#             sampler.log_thetas[:, 0, :],
-#             initial_step[:, 0, :]
-#         )
-
-#     def test_multiple_runs(self):
-#         """Test that multiple consecutive runs accumulate samples."""
-#         sampler = mcmc.mcmc.MCMC(
-#             optimizer=self.optimizer,
-#             step_size=0.01,
-#             n_chains=2,
-#             thin=1,
-#             seed=42
-#         )
-
-#         sampler.run(stopping_crit=None, max_steps=10, verbose=False)
-#         n_samples_1 = sampler.log_thetas.shape[1]
-
-#         sampler.run(stopping_crit=None, max_steps=10, verbose=False)
-#         n_samples_2 = sampler.log_thetas.shape[1]
-
-#         # Second run should add more samples
-#         self.assertGreater(n_samples_2, n_samples_1)
-
-#     def test_single_chain(self):
-#         """Test with single chain."""
-#         sampler = mcmc.mcmc.MCMC(
-#             optimizer=self.optimizer,
-#             n_chains=1,
-#             step_size=0.01,
-#             thin=1,
-#             seed=42
-#         )
-#         sampler.run(stopping_crit=None, max_steps=10, verbose=False)
-
-#         self.assertEqual(sampler.log_thetas.shape[0], 1)
-
-#     def test_large_thin_factor(self):
-#         """Test with large thin factor."""
-#         sampler = mcmc.mcmc.MCMC(
-#             optimizer=self.optimizer,
-#             n_chains=2,
-#             step_size=0.01,
-#             thin=100,
-#             seed=42
-#         )
-#         sampler.run(stopping_crit=None, max_steps=100, verbose=False)
-
-#         # With thin=100 and max_steps=100, we should get ~1 sample per chain
-#         self.assertLessEqual(sampler.log_thetas.shape[1], 2)
-
-#     def test_zero_max_steps(self):
-#         """Test with max_steps=0."""
-#         sampler = mcmc.mcmc.MCMC(
-#             optimizer=self.optimizer,
-#             step_size=0.01,
-#             n_chains=2,
-#             thin=1,
-#             seed=42
-#         )
-#         result = sampler.run(stopping_crit=None, max_steps=0, verbose=False)
-
-#         # Should return empty or initial samples
-#         self.assertEqual(result.shape[0], 2)
-
-#     def test_smmala_kernel_with_different_step_sizes(self):
-#         """Test smMALA with different step sizes per chain."""
-#         step_sizes = np.array([0.0001, 0.001])
-#         sampler = mcmc.mcmc.MCMC(
-#             optimizer=self.optimizer,
-#             kernel_class=smMALAKernel,
-#             step_size=step_sizes,
-#             n_chains=2,
-#             thin=1,
-#             seed=42
-#         )
-
-#         try:
-#             sampler.run(stopping_crit=None, max_steps=10, verbose=False)
-
-#             self.assertEqual(sampler.log_thetas.shape[0], 2)
-#             self.assertGreater(sampler.log_thetas.shape[1], 0)
-#         except np.linalg.LinAlgError:
-#             # Expected if metric tensor not positive definite
-#             pass
+class TestMCMC(unittest.TestCase):
+    """Integration tests for the MCMC sampler."""
+
+    def test_init_from_optimizer(self):
+        sampler = MCMC(optimizer=optimizer, n_chains=2)
+        self.assertEqual(sampler.n_chains, 2)
+
+    def test_init_from_model_data_penalty(self):
+        """Initialize using model, data and penalty from optimizer."""
+        sampler = MCMC(
+            mhn_model=model,
+            data=data,
+            penalty=Penalty.L2,
+            n_chains=2
+        )
+        self.assertEqual(sampler.n_chains, 2)
+
+    def test_init_invalid_combinations(self):
+        """Check errors when providing conflicting or incomplete arguments."""
+        params = {
+            "optimizer": optimizer,
+            "data": data,
+            "mhn_model": model,
+            "penalty": Penalty.L2,
+            "log_prior": (log_l2_prior, log_l2_prior_grad, log_l2_prior_hessian),
+        }
+
+        for args in [
+            ("data",),
+            ("mhn_model",),
+            ("penalty",),
+            ("log_prior",),
+            ("data", "mhn_model"),
+            ("data", "penalty"),
+            ("data", "log_prior"),
+            ("mhn_model", "penalty"),
+            ("mhn_model", "log_prior"),
+            ("penalty", "log_prior"),
+            ("data", "mhn_model", "penalty", "log_prior"),
+
+        ]:
+            with self.assertRaises(ValueError):
+                MCMC(**{k: params[k] for k in args})
+
+        with self.assertRaises(ValueError):
+            optimizer2 = mhn.optimizers.oMHNOptimizer()
+            optimizer2.results = optimizer.result
+            optimizer2._data = optimizer._data
+            MCMC(optimizer=optimizer2)
+        with self.assertWarns(UserWarning):
+            MCMC(optimizer=optimizer, penalty=Penalty.L2)
+        with self.assertWarns(UserWarning):
+            MCMC(optimizer=optimizer, log_prior=(
+                log_l2_prior, log_l2_prior_grad, log_l2_prior_hessian))
+        with self.assertRaises(ValueError):
+            MCMC(optimizer=optimizer, kernel_class=smMALAKernel)
+        with self.assertRaises(ValueError):
+            MCMC(mhn_model=model, log_prior=(log_l2_prior, log_l2_prior_grad),
+                 kernel_class=smMALAKernel)
+        with self.assertRaises(ValueError):
+            MCMC(mhn_model=model, log_prior=(log_l2_prior),
+                 kernel_class=MALAKernel)
+
+    def test_run_rwm_basic(self):
+        sampler = MCMC(
+            optimizer=optimizer,
+            kernel_class=RWMKernel,
+            step_size=0.1,
+            n_chains=2,
+            thin=1,
+            seed=42
+        )
+        result = sampler.run(stopping_crit=None, max_steps=10, verbose=False)
+        self.assertEqual(result.shape, (2, 10, size))
+
+    def test_run_mala_basic(self):
+        sampler = MCMC(
+            optimizer=optimizer,
+            kernel_class=MALAKernel,
+            step_size=0.1,
+            n_chains=2,
+            thin=1,
+            seed=42
+        )
+        result = sampler.run(stopping_crit=None, max_steps=10, verbose=False)
+        self.assertEqual(result.shape, (2, 10, size))
+
+    def test_run_smmala_basic(self):
+        sampler = MCMC(
+            mhn_model=model,
+            data=data,
+            log_prior=(log_l2_prior, log_l2_prior_grad, log_l2_prior_hessian),
+            kernel_class=smMALAKernel,
+            step_size=0.001,
+            n_chains=2,
+            thin=1,
+            seed=42
+        )
+        sampler.initial_step = np.random.normal(
+            loc=0, scale=1 / np.sqrt(2 * lam), size=(2, 1, size))
+        result = sampler.run(stopping_crit=None,
+                             max_steps=3, verbose=False)
+        self.assertEqual(result.shape, (2, 3, size))
+
+    def test_seed_reproducibility(self):
+        sam1 = MCMC(
+            optimizer=optimizer,
+            step_size=0.1,
+            seed=123,
+            n_chains=2,
+            thin=1
+        )
+        sam1.run(stopping_crit=None, max_steps=5, verbose=False)
+        sam2 = MCMC(
+            optimizer=optimizer,
+            step_size=0.1,
+            seed=123,
+            n_chains=2,
+            thin=1
+        )
+        sam2.run(stopping_crit=None, max_steps=5, verbose=False)
+        np.testing.assert_array_equal(sam1.log_thetas, sam2.log_thetas)
+
+    def test_rhat_and_ess(self):
+        sampler = MCMC(
+            optimizer=optimizer,
+            step_size=0.1,
+            seed=42,
+            n_chains=3,
+            thin=1
+        )
+        sampler.run(stopping_crit=None, max_steps=20, verbose=False)
+        r = sampler.rhat()
+        e = sampler.ess()
+        self.assertEqual(len(r), sampler.size)
+        self.assertEqual(len(e), sampler.size)
+        self.assertTrue(np.all(r > 0.99))
+        self.assertTrue(np.all(e > 0))
+
+    def test_acceptance_rate(self):
+        sampler = MCMC(
+            optimizer=optimizer,
+            step_size=0.1,
+            seed=42,
+            n_chains=3,
+            thin=1
+        )
+        sampler.run(stopping_crit=None, max_steps=20, verbose=False)
+        rates = sampler.acceptance()
+        self.assertEqual(len(rates), 3)
+        self.assertTrue(np.all((rates >= 0) & (rates <= 1)))
+
+    def test_tune_stepsize(self):
+        sampler = MCMC(
+            optimizer=optimizer,
+            step_size="auto",
+            n_chains=2,
+            seed=42,
+            thin=1
+        )
+        val = sampler.tune_stepsize(n_steps=5, verbose=False, tol=0.3)
+        self.assertIsInstance(val, float)
+        self.assertEqual(sampler.step_size, val)
 
 
 if __name__ == "__main__":
