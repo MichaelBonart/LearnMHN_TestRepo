@@ -222,7 +222,6 @@ class MCMC:
         if penalty is not None and log_prior is not None:
             raise ValueError("Provide only one of penalty or log_prior.")
 
-        self._penalty = penalty
         self._log_prior = log_prior
 
         if penalty is not None:
@@ -232,6 +231,8 @@ class MCMC:
                     "omhn" if self.omhn else "cmhn"][penalty]
 
             log_prior = (None, None, None)
+            
+        self._penalty = penalty
 
         log_prior = log_prior or (None, None, None)
 

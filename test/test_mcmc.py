@@ -17,8 +17,7 @@ data_container = StateContainer(data)
 data_size = data.shape[0]
 optimizer = mhn.optimizers.oMHNOptimizer().load_data_matrix(data)
 np.random.seed(0)
-lam, df = optimizer.lambda_from_cv(return_lambda_scores=True)
-print(df)
+lam = optimizer.lambda_from_cv()
 model = optimizer.train(lam=lam)
 shape = (4, 3)
 size = 12
@@ -663,6 +662,19 @@ class TestMCMC(unittest.TestCase):
     def test_run_rwm_basic(self):
         sampler = MCMC(
             optimizer=optimizer,
+            kernel_class=RWMKernel,
+            step_size=0.1,
+            n_chains=2,
+            thin=1,
+            seed=42
+        )
+        result = sampler.run(stopping_crit=None, max_steps=10, verbose=False)
+        self.assertEqual(result.shape, (2, 10, size))
+
+        sampler = MCMC(
+            mhn_model=model,
+            data=data,
+            penalty=Penalty.L2,
             kernel_class=RWMKernel,
             step_size=0.1,
             n_chains=2,
