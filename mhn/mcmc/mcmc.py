@@ -208,8 +208,6 @@ class MCMC:
 
         self.n_chains = n_chains
         self.size = optimizer.result.log_theta.size
-        self.backup_interval = None
-        self.backup_filename = None
         self.log_thetas = np.array([]).reshape(n_chains, 0, self.size)
         self.step_size = step_size
         self.thin = thin
@@ -611,7 +609,7 @@ class MCMC:
                 0.02.
 
         Returns:
-            float: Inferred step size epsilon.
+            float: Inferred step sizet.
         """
         if target_acceptance == "auto":
             if self.kernel_class == RWMKernel:
