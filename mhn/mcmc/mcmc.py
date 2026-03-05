@@ -22,6 +22,7 @@ from ..training import penalties_cmhn, penalties_omhn
 import warnings
 import arviz
 
+from __future__ import annotations
 
 class MCMC:
     """Markov chain Monte Carlo sampler for MHN.

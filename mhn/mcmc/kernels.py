@@ -5,6 +5,9 @@ base kernel base class. Those are responsible for the actual steps of
 MCMC.
 """
 # author(s): Y. Linda Hu
+
+from __future__ import annotations
+
 import scipy.integrate
 
 import numpy as np
