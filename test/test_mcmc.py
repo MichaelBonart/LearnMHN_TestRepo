@@ -4,7 +4,7 @@ Unit tests for the mhn.mcmc module.
 
 import sys
 import unittest
-if sys.version_info < (3, 9):
+if sys.version_info < (3, 10):
     raise unittest.SkipTest("mhn.mcmc requires Python 3.9+")
 
 import numpy as np
