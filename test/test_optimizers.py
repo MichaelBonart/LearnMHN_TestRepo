@@ -1,3 +1,9 @@
+"""
+This file contains unittests for optimizers.py
+"""
+
+# author(s): Stefan Vocht, Michael Bonart
+
 from __future__ import annotations
 
 import unittest

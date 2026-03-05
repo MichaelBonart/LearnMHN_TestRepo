@@ -2,7 +2,7 @@
 This submodule contains classes to represent Mutual Hazard Networks.
 """
 
-# author(s): Y. Linda Hu, Stefan Vocht
+# author(s): Y. Linda Hu, Stefan Vocht, Michael Bonart
 
 from __future__ import annotations
 

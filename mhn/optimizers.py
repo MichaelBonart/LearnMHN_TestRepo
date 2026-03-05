@@ -1,7 +1,7 @@
 """
 This submodule contains Optimizer classes to learn an MHN from mutation data.
 """
-# author(s): Stefan Vocht, Y. Linda Hu, Rudolf Schill, Andreas Lösch
+# author(s): Stefan Vocht, Y. Linda Hu, Rudolf Schill, Andreas Lösch, Michael Bonart
 
 from __future__ import annotations
 
