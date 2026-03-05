@@ -190,7 +190,7 @@ setup(
         'pandas>=1.5.3',
         'tqdm>=4.66.3',
         'matplotlib>=3.6.0',
-        'arviz<=0.23.0'
+        "arviz>=0.17, <=0.23.0; python_version>='3.9'"
     ],
     python_requires='>=3.8, <3.13'
 )
