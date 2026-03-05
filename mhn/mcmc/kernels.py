@@ -8,8 +8,6 @@ MCMC.
 
 from __future__ import annotations
 
-import scipy.integrate
-
 import numpy as np
 import scipy.linalg
 from typing import Callable
