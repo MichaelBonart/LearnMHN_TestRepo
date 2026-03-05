@@ -2,6 +2,9 @@
 Unit tests for the mhn.mcmc module.
 """
 
+if sys.version_info < (3, 9):
+    raise unittest.SkipTest("mhn.mcmc requires Python 3.9+")
+
 import unittest
 import numpy as np
 import mhn
@@ -11,9 +14,6 @@ from mhn.mcmc.mcmc import MCMC
 from mhn.optimizers import Penalty
 import scipy.stats
 import sys
-
-if sys.version_info < (3, 9):
-    raise unittest.SkipTest("mhn.mcmc requires Python 3.9+")
 
 data = np.loadtxt("demo/LUAD_n12.csv", delimiter=",",
                   skiprows=1, dtype=np.int32)[:100, :3]
