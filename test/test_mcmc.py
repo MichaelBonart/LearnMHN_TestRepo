@@ -15,8 +15,8 @@ from mhn.mcmc.mcmc import MCMC
 from mhn.optimizers import Penalty
 import scipy.stats
 
-data = np.loadtxt("demo/LUAD_n12.csv", delimiter=",",
-                  skiprows=1, dtype=np.int32)[:100, :3]
+np.random.seed(0)
+data = np.random.randint(2, size=(100,3), dtype=np.int32)
 data_container = StateContainer(data)
 data_size = data.shape[0]
 optimizer = mhn.optimizers.oMHNOptimizer().load_data_matrix(data)
