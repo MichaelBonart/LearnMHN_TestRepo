@@ -3,10 +3,10 @@ Unit tests for the mhn.mcmc module.
 """
 
 import sys
+import unittest
 if sys.version_info < (3, 9):
     raise unittest.SkipTest("mhn.mcmc requires Python 3.9+")
 
-import unittest
 import numpy as np
 import mhn
 from mhn.training.state_containers import StateContainer
