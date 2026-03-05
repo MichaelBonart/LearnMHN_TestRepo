@@ -137,6 +137,13 @@ ext_modules = [
         extra_link_args=extra_cuda_link_args
     ),
     Extension(
+        "mhn.full_state_space.fisher",
+        ["./mhn/full_state_space/fisher.pyx"],
+        extra_compile_args=[
+            '/Ox' if IS_WINDOWS else '-O2'
+        ]
+    ),
+    Extension(
         "mhn.full_state_space.PerformanceCriticalCode",
         ["./mhn/full_state_space/PerformanceCriticalCode.pyx"],
         extra_compile_args=[
@@ -149,7 +156,7 @@ ext_modules = [
         extra_compile_args=[
             '/Ox' if IS_WINDOWS else '-O2'
         ]
-    )
+    ),
 ]
 
 # we only want the source code in a source distribution
@@ -182,7 +189,8 @@ setup(
         f'scipy>={scipy.__version__}, <1.15.0',
         'pandas>=1.5.3',
         'tqdm>=4.66.3',
-        'matplotlib>=3.6.0'
+        'matplotlib>=3.6.0',
+        'arviz~=0.23.0'
     ],
     python_requires='>=3.8, <3.13'
 )
