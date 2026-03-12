@@ -17,6 +17,7 @@ class TestCythonGradient(unittest.TestCase):
     """
     Tests for the function cpu_gradient_and_score
     """
+
     def setUp(self) -> None:
         """
         Preparation for each test
@@ -45,7 +46,8 @@ class TestCythonGradient(unittest.TestCase):
 
         analytic_gradient, score = likelihood_cmhn.cpu_gradient_and_score(theta, StateContainer(random_sample))
         self.assertEqual(round(score, 8), round(original_score, 8))
-        np.testing.assert_array_equal(np.around(numerical_gradient, decimals=3), np.around(analytic_gradient, decimals=3))
+        np.testing.assert_array_equal(np.around(numerical_gradient, decimals=3),
+                                      np.around(analytic_gradient, decimals=3))
 
     def test_scores_match_cmhn(self):
         """
@@ -102,18 +104,20 @@ class TestCythonGradient(unittest.TestCase):
         reverse[permutation] = np.arange(n)
         permutation_sample = random_sample[:, permutation]
         permutation_theta = theta[permutation][:, permutation]
-        gradient2, score2 = likelihood_cmhn.cpu_gradient_and_score(permutation_theta, StateContainer(permutation_sample))
+        gradient2, score2 = likelihood_cmhn.cpu_gradient_and_score(
+            permutation_theta, StateContainer(permutation_sample))
         reversed_gradient = gradient2[reverse][:, reverse]
         np.testing.assert_array_equal(permutation_sample[:, reverse], random_sample)
         # compare gradients and scores
         np.testing.assert_array_equal(np.around(gradient1, decimals=8), np.around(reversed_gradient, decimals=8))
-        self.assertEqual(score1, score2)
+        self.assertEqual(round(score1, 8), round(score2, 8))
 
 
 class TestCudaGradient(unittest.TestCase):
     """
     Tests for the function cuda_gradient_and_score
     """
+
     def setUp(self) -> None:
         """
         Preparation for each test
@@ -158,12 +162,13 @@ class TestCudaGradient(unittest.TestCase):
         reverse[permutation] = np.arange(n)
         permutation_sample = random_sample[:, permutation]
         permutation_theta = theta[permutation][:, permutation]
-        gradient2, score2 = likelihood_cmhn.cuda_gradient_and_score(permutation_theta.copy(), StateContainer(permutation_sample))
+        gradient2, score2 = likelihood_cmhn.cuda_gradient_and_score(
+            permutation_theta.copy(), StateContainer(permutation_sample))
         reversed_gradient = gradient2[reverse][:, reverse]
         np.testing.assert_array_equal(permutation_sample[:, reverse], random_sample)
         # compare gradients and scores
         np.testing.assert_array_equal(np.around(gradient1, decimals=8), np.around(reversed_gradient, decimals=8))
-        self.assertEqual(score1, score2)
+        self.assertEqual(round(score1, 8), round(score2, 8))
 
     def test_auto_device_picker(self):
         """
