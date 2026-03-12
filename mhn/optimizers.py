@@ -364,7 +364,7 @@ class _Optimizer(abc.ABC):
             raise ValueError(
                 "The given penalty must either be an instance of _Optimizer.Penalty or a tuple of two functions."
             )
-        
+
         if isinstance(penalty, oMHNOptimizer.Penalty):
             penalty_score, penalty_gradient = {
                 Penalty.L1: (penalties_cmhn.l1, penalties_cmhn.l1_),
@@ -376,7 +376,7 @@ class _Optimizer(abc.ABC):
             }[penalty]
         else:
             penalty_score, penalty_gradient = penalty
-        
+
         self._regularized_score_func_builder = lambda grad_score_func: penalties_cmhn.build_regularized_score_func(
             grad_score_func, penalty_score
         )
@@ -395,7 +395,7 @@ class cMHNOptimizer(_Optimizer):
         super().__init__()
         self._gradient_and_score_func = likelihood_cmhn.gradient_and_score
 
-    def load_data_matrix(self, data_matrix: np.ndarray | pd.DataFrame):
+    def load_data_matrix(self, data_matrix: np.ndarray | pd.DataFrame, reduce_data_redundancies: bool = True):
         """
         Loads mutation data stored in a numpy array or pandas DataFrame.
 
@@ -412,7 +412,7 @@ class cMHNOptimizer(_Optimizer):
         else:
             self._events = None
         data_matrix = self._preprocess_binary_matrix(data_matrix)
-        self._data = StateContainer(data_matrix)
+        self._data = StateContainer(data_matrix, reduce_data_redundancies)
         self._bin_datamatrix = data_matrix
         return self
 

@@ -125,6 +125,13 @@ cdef void construct_sorted_repetition_descriptor(int* repetition_descriptor, Sta
             repetition_descriptor[i-1] = 1 + repetition_descriptor[i] 
             repetition_descriptor[i] = 0
 
+cdef void fill_default_repetition_descriptor(int* repetition_descriptor, int N):
+    """
+    This function fills the repetition descriptor with ones.   
+    """
+    for i in range(0,N):
+        repetition_descriptor[i] = 1
+
 
 
 cdef class StateContainer:
@@ -134,7 +141,7 @@ cdef class StateContainer:
     It also makes sure that there aren't more than 32 mutations present in a single sample as this would break the algorithms.
     """
 
-    def __init__(self, int[:, :] mutation_data):
+    def __init__(self, int[:, :] mutation_data, bint reduce_data_redundancies = True):
         """
         Args:
             mutation_data (np.ndarray): a 2D numpy array with dtype=np.int32 that contains only 0s and 1s. Rows represent samples, and columns represent events.
@@ -166,8 +173,10 @@ cdef class StateContainer:
         if not self.repetition_descriptor:
             raise MemoryError()
 
-        #construct_repetition_descriptor(self.repetition_descriptor, mutation_data)
-        construct_sorted_repetition_descriptor(self.repetition_descriptor, self.states, self.internal_data_size)
+        if reduce_data_redundancies:
+            construct_sorted_repetition_descriptor(self.repetition_descriptor, self.states, self.internal_data_size)
+        else:
+            fill_default_repetition_descriptor(self.repetition_descriptor, self.internal_data_size)
 
 
     def get_data_shape(self):
