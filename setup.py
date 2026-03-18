@@ -177,9 +177,9 @@ setup(
     ext_modules=cythonize(ext_modules,
                           annotate=GENERATE_DEBUG_HTML,
                           compile_time_env=dict(
-                                                NVCC_AVAILABLE=nvcc_available,
-                                                STATE_SIZE=STATE_SIZE
-                                                ),
+                              NVCC_AVAILABLE=nvcc_available,
+                              STATE_SIZE=STATE_SIZE
+                          ),
                           compiler_directives={'embedsignature': True}
                           ),
     include_dirs=[numpy.get_include()],
