@@ -78,25 +78,55 @@ cdef void sort_by_age(State *states, double *ages, int state_num):
             break
 
 
-cdef void construct_repetition_descriptor(int* repetition_descriptor, int[:,:] mutation_data):
+cdef void construct_repetition_descriptor(state_container : StateContainer):
     """
-    This function counts the repetitions of each row in mutation_data. 
-    The repetition count of each row is stored in the returned array at the index of the row's first occurence in mutation_data.
-    All other values in the returned array are zero.    
+    This function counts the repetitions of each state in a given StateContainer and stores this information in repetition_descriptor.
+    The data array is compressed such that it no longer contains redundant rows more than once (additionally it may be reordered).
     """
 
-    N=mutation_data.shape[0]
-    for i in range(0,N):
+    N = state_container.internal_data_size
+    states = state_container.states
+    repetition_descriptor = state_container.repetition_descriptor
+
+    qsort(<void*>states, <size_t>N, sizeof(State), compare_states)
+
+    for i in range(N):
         repetition_descriptor[i] = 1
 
-    for i in range(0,N):
-        if repetition_descriptor[i] == 0:
-            continue
-        
-        for j in range(i+1, N):
-            if np.array_equal(mutation_data[i,:], mutation_data[j,:]):
-                repetition_descriptor[i] += 1
-                repetition_descriptor[j] = 0
+    #count repetitions and number of unique entries in data array
+    compr_data_size = 1
+    for i in range(1, N):
+        if compare_states(&states[i-1], &states[i]) == 0:
+            repetition_descriptor[i] = 1 + repetition_descriptor[i-1] 
+            repetition_descriptor[i-1] = 0
+        else:
+            compr_data_size += 1
+
+    #allocate new shorter data array for unique entries only
+    compr_states = <State *> malloc(compr_data_size * sizeof(State))
+    
+    if not compr_states:
+        raise MemoryError()
+
+    compr_repetition_descriptor = <int *> malloc(compr_data_size * sizeof(int))
+
+    if not compr_repetition_descriptor:
+        raise MemoryError()
+
+   #exclude redundant entries in new data array
+    j=0
+    for i in range(N):
+        if repetition_descriptor[i] != 0:
+            compr_states[j] = states[i]
+            compr_repetition_descriptor[j] = repetition_descriptor[i]
+            j+=1
+
+    free(state_container.states)
+    free(state_container.repetition_descriptor)
+
+    state_container.states = compr_states
+    state_container.repetition_descriptor = compr_repetition_descriptor
+    state_container.internal_data_size = compr_data_size
 
 
 cdef int compare_states(const void* a, const void* b) nogil:
@@ -174,7 +204,7 @@ cdef class StateContainer:
             raise MemoryError()
 
         if reduce_data_redundancies:
-            construct_sorted_repetition_descriptor(self.repetition_descriptor, self.states, self.internal_data_size)
+            construct_repetition_descriptor(self)
         else:
             fill_default_repetition_descriptor(self.repetition_descriptor, self.internal_data_size)
 
@@ -193,16 +223,24 @@ cdef class StateContainer:
         """
         return self.max_mutation_num
 
-    def get_repetition_descriptor(self):
+    def get_data_repetitions(self):
         """
         Returns:
-            Array describing repetitions of samples in samples .
+            Two arrays:
+                List of unique samples in this StateContainer.
+                Repetition count of each given sample in dataset.
         """
-        python_array=[]
+        repetitions_python_array = []
+        data_python_array = []
         for i in range(self.internal_data_size):
-            python_array.append( self.repetition_descriptor[i] )
+            repetitions_python_array.append( self.repetition_descriptor[i] )
+            state_int=self.states[i]
+            state_array = []
+            for j in range(STATE_SIZE):
+                state_array.extend([(state_int.parts[j]// (2**k))%2 for k in range(32)])
+            data_python_array.append(state_array[:self.gene_num])
 
-        return python_array
+        return data_python_array, repetitions_python_array
 
     def compress_data(self):
         """
