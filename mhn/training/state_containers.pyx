@@ -84,7 +84,7 @@ cdef void construct_repetition_descriptor(state_container : StateContainer):
     The data array is compressed such that it no longer contains redundant rows more than once (additionally it may be reordered).
     """
 
-    N = state_container.internal_data_size
+    N = state_container.state_array_size
     states = state_container.states
     repetition_descriptor = state_container.repetition_descriptor
 
@@ -126,7 +126,7 @@ cdef void construct_repetition_descriptor(state_container : StateContainer):
 
     state_container.states = compr_states
     state_container.repetition_descriptor = compr_repetition_descriptor
-    state_container.internal_data_size = compr_data_size
+    state_container.state_array_size = compr_data_size
 
 
 cdef int compare_states(const void* a, const void* b) nogil:
@@ -182,7 +182,7 @@ cdef class StateContainer:
 
         self.data_size = mutation_data.shape[0]
         self.gene_num = mutation_data.shape[1]
-        self.internal_data_size = self.data_size
+        self.state_array_size = self.data_size
 
         self.max_mutation_num = compute_max_mutation_number(mutation_data)
         if self.max_mutation_num == 0:
@@ -190,7 +190,7 @@ cdef class StateContainer:
         elif self.max_mutation_num > 32:
             raise ValueError("A single sample must not contain more than 32 mutations")
 
-        self.states = <State *> malloc(self.internal_data_size * sizeof(State))
+        self.states = <State *> malloc(self.state_array_size * sizeof(State))
 
         if not self.states:
             raise MemoryError()
@@ -198,7 +198,7 @@ cdef class StateContainer:
         fill_states(self.states, mutation_data)
 
 
-        self.repetition_descriptor = <int *> malloc(self.internal_data_size * sizeof(int))
+        self.repetition_descriptor = <int *> malloc(self.state_array_size * sizeof(int))
 
         if not self.repetition_descriptor:
             raise MemoryError()
@@ -206,7 +206,7 @@ cdef class StateContainer:
         if reduce_data_redundancies:
             construct_repetition_descriptor(self)
         else:
-            fill_default_repetition_descriptor(self.repetition_descriptor, self.internal_data_size)
+            fill_default_repetition_descriptor(self.repetition_descriptor, self.state_array_size)
 
 
     def get_data_shape(self):
@@ -232,7 +232,7 @@ cdef class StateContainer:
         """
         repetitions_python_array = []
         data_python_array = []
-        for i in range(self.internal_data_size):
+        for i in range(self.state_array_size):
             repetitions_python_array.append( self.repetition_descriptor[i] )
             state_int=self.states[i]
             state_array = []
@@ -246,10 +246,10 @@ cdef class StateContainer:
         """
         This function removes the data of all samples whose assigned repetition_count is zero.
         The arrays *states and *repetition_descriptor are reallocated as (shorter) arrays.
-        self.internal_data_size refers to the length of the compressed arrays, while self.data_size still refers to the original number of datapoints.
+        self.state_array_size refers to the length of the compressed arrays, while self.data_size still refers to the original number of datapoints.
         """
         compr_data_size = 0
-        for i in range(0, self.internal_data_size):
+        for i in range(0, self.state_array_size):
             if self.repetition_descriptor[i]!=0: compr_data_size+=1
         
         compr_states = <State *> malloc(compr_data_size * sizeof(State))
@@ -263,7 +263,7 @@ cdef class StateContainer:
             raise MemoryError()
 
         j=0
-        for i in range(self.internal_data_size):
+        for i in range(self.state_array_size):
             if self.repetition_descriptor[i] != 0:
                 compr_states[j] = self.states[i]
                 compr_repetition_descriptor[j] = self.repetition_descriptor[i]
@@ -274,7 +274,7 @@ cdef class StateContainer:
 
         self.states = compr_states
         self.repetition_descriptor = compr_repetition_descriptor
-        self.internal_data_size = compr_data_size
+        self.state_array_size = compr_data_size
 
     def __dealloc__(self):
         free(self.states)
@@ -327,7 +327,7 @@ def create_indep_model(StateContainer state_container):
 
     for i in range(n):
         sum_of_occurance = 0
-        for j in range(state_container.internal_data_size):
+        for j in range(state_container.state_array_size):
             sum_of_occurance += ((state_container.states[j].parts[i >> 5] >> (i & 31)) & 1) * state_container.repetition_descriptor[j]
 
         if sum_of_occurance == 0:
