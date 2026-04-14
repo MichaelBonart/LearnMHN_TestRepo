@@ -821,9 +821,6 @@ extern "C"
         // compute the gradient for each tumor sample and add them together
         // for repeated samples compute gradient only once and weigh it accordingly
         for (int i = 0; i < state_array_size; i++) {
-
-            if(repetition_count[i] == 0) continue;
-
             cuda_restricted_gradient(cuda_ptheta, &mutation_data[i], n, partial_grad, p0_pD, pth, q, tmp1, tmp2);
             add_arrays_weighted<<<32, 64>>>(partial_grad, cuda_grad_out, repetition_count[i], n*n);
 

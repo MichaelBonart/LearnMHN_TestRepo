@@ -575,8 +575,6 @@ cpdef cpu_gradient_and_score(double[:, :] theta, StateContainer mutation_data):
         # compute the gradient and score for the sample and add them to the total gradient and total score
         # for identical samples computation is done only once and then weighted by their repetiton count
         sample_repetition = mutation_data.repetition_descriptor[i]
-        if sample_repetition == 0: continue
-
         score += restricted_gradient_and_score(theta, &mutation_data.states[i], local_gradient_container) * sample_repetition
         final_gradient += local_gradient_container * sample_repetition
 
@@ -657,8 +655,6 @@ cpdef cpu_score(double[:, :] theta, StateContainer mutation_data):
         # compute the score for the sample and add it to the total score
         # for identical samples computation is done only once and then weighted by their repetiton count
         sample_repetition = mutation_data.repetition_descriptor[i]
-        if sample_repetition == 0: continue
-
         score += restricted_score(theta, &mutation_data.states[i]) * sample_repetition
 
     # return the normalized score
@@ -792,9 +788,6 @@ cpdef gradient_and_score(double[:, :] theta, StateContainer mutation_data):
 
         for i in range(index_left):
             sample_repetition = sorted_repetition_desc[i]
-            if sample_repetition == 0:
-                continue
-
             state = &sorted_data[i]
             score += restricted_gradient_and_score(theta, state, tmp_gradient) * sample_repetition
             final_gradient += tmp_gradient * sample_repetition
