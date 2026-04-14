@@ -5,7 +5,7 @@ a new MHN.
 """
 # author(s): Stefan Vocht
 
-from libc.stdlib cimport malloc, free
+from libc.stdlib cimport malloc, free, qsort
 from libc.string cimport memcpy
 
 from mhn.training.state_containers cimport State
@@ -78,6 +78,69 @@ cdef void sort_by_age(State *states, double *ages, int state_num):
             break
 
 
+cdef void construct_repetition_descriptor(state_container : StateContainer):
+    """
+    This function counts the repetitions of each state in a given StateContainer and stores this information in repetition_descriptor.
+    The data array is compressed such that it no longer contains redundant rows more than once (additionally it may be reordered).
+    """
+
+    N = state_container.state_array_size
+    states = state_container.states
+    repetition_descriptor = state_container.repetition_descriptor
+
+    qsort(<void*>states, <size_t>N, sizeof(State), compare_states)
+
+    for i in range(N):
+        repetition_descriptor[i] = 1
+
+    #count repetitions and number of unique entries in data array
+    compr_data_size = 1
+    for i in range(1, N):
+        if compare_states(&states[i-1], &states[i]) == 0:
+            repetition_descriptor[i] = 1 + repetition_descriptor[i-1] 
+            repetition_descriptor[i-1] = 0
+        else:
+            compr_data_size += 1
+
+    #allocate new shorter data array for unique entries only
+    compr_states = <State *> malloc(compr_data_size * sizeof(State))
+    
+    if not compr_states:
+        raise MemoryError()
+
+    compr_repetition_descriptor = <int *> malloc(compr_data_size * sizeof(int))
+
+    if not compr_repetition_descriptor:
+        raise MemoryError()
+
+   #exclude redundant entries in new data array
+    j=0
+    for i in range(N):
+        if repetition_descriptor[i] != 0:
+            compr_states[j] = states[i]
+            compr_repetition_descriptor[j] = repetition_descriptor[i]
+            j+=1
+
+    free(state_container.states)
+    free(state_container.repetition_descriptor)
+
+    state_container.states = compr_states
+    state_container.repetition_descriptor = compr_repetition_descriptor
+    state_container.state_array_size = compr_data_size
+
+
+cdef int compare_states(const void* a, const void* b) nogil:
+    cdef State a_v = (<State*>a)[0]
+    cdef State b_v = (<State*>b)[0]
+
+    for i in range(STATE_SIZE):
+        if a_v.parts[i] == b_v.parts[i]: continue
+        if a_v.parts[i] < b_v.parts[i]: return -1
+        return 1
+    return 0
+
+
+
 cdef class StateContainer:
     """
     This class is used as a wrapper such that the C array containing the States can be referenced in a Python script.
@@ -96,6 +159,7 @@ cdef class StateContainer:
 
         self.data_size = mutation_data.shape[0]
         self.gene_num = mutation_data.shape[1]
+        self.state_array_size = self.data_size
 
         self.max_mutation_num = compute_max_mutation_number(mutation_data)
         if self.max_mutation_num == 0:
@@ -103,12 +167,19 @@ cdef class StateContainer:
         elif self.max_mutation_num > 32:
             raise ValueError("A single sample must not contain more than 32 mutations")
 
-        self.states = <State *> malloc(self.data_size * sizeof(State))
+        self.states = <State *> malloc(self.state_array_size * sizeof(State))
 
         if not self.states:
             raise MemoryError()
 
         fill_states(self.states, mutation_data)
+
+        self.repetition_descriptor = <int *> malloc(self.state_array_size * sizeof(int))
+
+        if not self.repetition_descriptor:
+            raise MemoryError()
+
+        construct_repetition_descriptor(self)
 
 
     def get_data_shape(self):
@@ -125,8 +196,28 @@ cdef class StateContainer:
         """
         return self.max_mutation_num
 
+    def get_data_repetitions(self):
+        """
+        Returns:
+            Two arrays:
+                List of unique samples in this StateContainer.
+                Repetition count of each given sample in dataset.
+        """
+        repetitions_python_array = []
+        data_python_array = []
+        for i in range(self.state_array_size):
+            repetitions_python_array.append( self.repetition_descriptor[i] )
+            state_int=self.states[i]
+            state_array = []
+            for j in range(STATE_SIZE):
+                state_array.extend([(state_int.parts[j]// (2**k))%2 for k in range(32)])
+            data_python_array.append(state_array[:self.gene_num])
+
+        return data_python_array, repetitions_python_array
+
     def __dealloc__(self):
         free(self.states)
+        free(self.repetition_descriptor)
 
 
 cdef class StateAgeContainer(StateContainer):
@@ -175,8 +266,8 @@ def create_indep_model(StateContainer state_container):
 
     for i in range(n):
         sum_of_occurance = 0
-        for j in range(state_container.data_size):
-            sum_of_occurance += (state_container.states[j].parts[i >> 5] >> (i & 31)) & 1
+        for j in range(state_container.state_array_size):
+            sum_of_occurance += ((state_container.states[j].parts[i >> 5] >> (i & 31)) & 1) * state_container.repetition_descriptor[j]
 
         if sum_of_occurance == 0:
             warnings.warn(f"During independence model creation: event {i} never occurs in the data, base rate will be 0")
