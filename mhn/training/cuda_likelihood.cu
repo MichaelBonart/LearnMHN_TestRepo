@@ -405,6 +405,15 @@ __global__ void add_arrays(const double *arr1, double *arr_inout, const int size
     }
 }
 
+__global__ void add_arrays_weighted(const double *arr1, double *arr_inout, const int weight,  const int size) {
+    int stride = blockDim.x * gridDim.x;
+    int cuda_index = blockIdx.x * blockDim.x + threadIdx.x;
+
+    for (int k = cuda_index; k < size; k += stride) {
+        arr_inout[k] += arr1[k] * weight;
+    }
+}
+
 __global__ void divide_arrays_elementwise(const double *arr1, const double *arr2, double *out, const int size) {
     int stride = blockDim.x * gridDim.x;
     int cuda_index = blockIdx.x * blockDim.x + threadIdx.x;
@@ -716,6 +725,14 @@ __global__ void add_to_score(double *score, double *pth_end){
     }
 }
 
+__global__ void add_to_score_weighted(double *score, double *pth_end, const int weight){
+    const int cuda_index = blockIdx.x * blockDim.x + threadIdx.x;
+
+    if(cuda_index == 0){
+        score[0] += log(pth_end[0]) * weight;
+    }
+}
+
 
 extern "C"
 {
@@ -725,17 +742,18 @@ extern "C"
      * @param[in] ptheta array containing the theta entries
      * @param[in] n number of genes considered by the MHN, also number of columns/rows of theta
      * @param[in] mutation_data array of States, where each state represents a tumor sample
-     * @param[in] data_size number of tumor samples in mutation_data
+     * @param[in] state_array_size number of tumor samples in mutation_data without repetitions
+     * @param[in] repetition_count array describing repetition counts of samples in mutation_data
      * @param[out] grad_out array of size n*n in which the gradient will be stored
      * @param[out] score_out the marginal log-likelihood score is stored at this position
      *
      * @return CUDA error code converted to integer for better interoperability with Cython
     */
-    int DLL_PREFIX cuda_gradient_and_score_implementation(double *ptheta, int n, State *mutation_data, int data_size, double *grad_out, double *score_out) {
+    int DLL_PREFIX cuda_gradient_and_score_implementation(double *ptheta, int n, State *mutation_data, int state_array_size, int *repetition_count, double *grad_out, double *score_out) {
 
         // determine the maximum number of mutations present in a single tumor sample
         int max_mutation_num = 0;
-        for (int i = 0; i < data_size; i++) {
+        for (int i = 0; i < state_array_size; i++) {
             if (get_mutation_num(&mutation_data[i]) > max_mutation_num) max_mutation_num = get_mutation_num(&mutation_data[i]);
         }
 
@@ -801,12 +819,13 @@ extern "C"
         }
 
         // compute the gradient for each tumor sample and add them together
-        for (int i = 0; i < data_size; i++) {
+        // for repeated samples compute gradient only once and weigh it accordingly
+        for (int i = 0; i < state_array_size; i++) {
             cuda_restricted_gradient(cuda_ptheta, &mutation_data[i], n, partial_grad, p0_pD, pth, q, tmp1, tmp2);
-            add_arrays<<<32, 64>>>(partial_grad, cuda_grad_out, n*n);
+            add_arrays_weighted<<<32, 64>>>(partial_grad, cuda_grad_out, repetition_count[i], n*n);
 
             int mutation_num = get_mutation_num(&mutation_data[i]);
-            add_to_score<<<1, 1>>>(cuda_score, &pth[(1 << mutation_num) - 1]);
+            add_to_score_weighted<<<1, 1>>>(cuda_score, &pth[(1 << mutation_num) - 1], repetition_count[i]);
         }
 
         // copy the results to the CPU
