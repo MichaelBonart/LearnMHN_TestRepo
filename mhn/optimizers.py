@@ -395,7 +395,7 @@ class cMHNOptimizer(_Optimizer):
         super().__init__()
         self._gradient_and_score_func = likelihood_cmhn.gradient_and_score
 
-    def load_data_matrix(self, data_matrix: np.ndarray | pd.DataFrame, reduce_data_redundancies: bool = True):
+    def load_data_matrix(self, data_matrix: np.ndarray | pd.DataFrame):
         """
         Loads mutation data stored in a numpy array or pandas DataFrame.
 
@@ -412,7 +412,7 @@ class cMHNOptimizer(_Optimizer):
         else:
             self._events = None
         data_matrix = self._preprocess_binary_matrix(data_matrix)
-        self._data = StateContainer(data_matrix, reduce_data_redundancies)
+        self._data = StateContainer(data_matrix)
         self._bin_datamatrix = data_matrix
         return self
 

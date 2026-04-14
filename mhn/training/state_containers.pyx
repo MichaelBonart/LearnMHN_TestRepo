@@ -139,29 +139,6 @@ cdef int compare_states(const void* a, const void* b) nogil:
         return 1
     return 0
 
-cdef void construct_sorted_repetition_descriptor(int* repetition_descriptor, State *states, int N):
-    """
-    This function counts the repetitions of each row in mutation_data. 
-    The repetition count of each row is stored in the returned array at the index of the row's first occurence in mutation_data.
-    All other values in the returned array are zero.    
-    """
-
-    qsort(<void*>states, <size_t>N, sizeof(State), compare_states)
-    for i in range(0,N):
-        repetition_descriptor[i] = 1
-
-    for i in range(N-1, 0, -1):
-        if compare_states(&states[i-1], &states[i]) == 0:
-            repetition_descriptor[i-1] = 1 + repetition_descriptor[i] 
-            repetition_descriptor[i] = 0
-
-cdef void fill_default_repetition_descriptor(int* repetition_descriptor, int N):
-    """
-    This function fills the repetition descriptor with ones.   
-    """
-    for i in range(0,N):
-        repetition_descriptor[i] = 1
-
 
 
 cdef class StateContainer:
@@ -171,7 +148,7 @@ cdef class StateContainer:
     It also makes sure that there aren't more than 32 mutations present in a single sample as this would break the algorithms.
     """
 
-    def __init__(self, int[:, :] mutation_data, bint reduce_data_redundancies = True):
+    def __init__(self, int[:, :] mutation_data):
         """
         Args:
             mutation_data (np.ndarray): a 2D numpy array with dtype=np.int32 that contains only 0s and 1s. Rows represent samples, and columns represent events.
@@ -197,16 +174,12 @@ cdef class StateContainer:
 
         fill_states(self.states, mutation_data)
 
-
         self.repetition_descriptor = <int *> malloc(self.state_array_size * sizeof(int))
 
         if not self.repetition_descriptor:
             raise MemoryError()
 
-        if reduce_data_redundancies:
-            construct_repetition_descriptor(self)
-        else:
-            fill_default_repetition_descriptor(self.repetition_descriptor, self.state_array_size)
+        construct_repetition_descriptor(self)
 
 
     def get_data_shape(self):
@@ -241,40 +214,6 @@ cdef class StateContainer:
             data_python_array.append(state_array[:self.gene_num])
 
         return data_python_array, repetitions_python_array
-
-    def compress_data(self):
-        """
-        This function removes the data of all samples whose assigned repetition_count is zero.
-        The arrays *states and *repetition_descriptor are reallocated as (shorter) arrays.
-        self.state_array_size refers to the length of the compressed arrays, while self.data_size still refers to the original number of datapoints.
-        """
-        compr_data_size = 0
-        for i in range(0, self.state_array_size):
-            if self.repetition_descriptor[i]!=0: compr_data_size+=1
-        
-        compr_states = <State *> malloc(compr_data_size * sizeof(State))
-        
-        if not compr_states:
-            raise MemoryError()
-
-        compr_repetition_descriptor = <int *> malloc(compr_data_size * sizeof(int))
-
-        if not compr_repetition_descriptor:
-            raise MemoryError()
-
-        j=0
-        for i in range(self.state_array_size):
-            if self.repetition_descriptor[i] != 0:
-                compr_states[j] = self.states[i]
-                compr_repetition_descriptor[j] = self.repetition_descriptor[i]
-                j+=1
-
-        free(self.states)
-        free(self.repetition_descriptor)
-
-        self.states = compr_states
-        self.repetition_descriptor = compr_repetition_descriptor
-        self.state_array_size = compr_data_size
 
     def __dealloc__(self):
         free(self.states)
